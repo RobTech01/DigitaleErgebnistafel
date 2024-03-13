@@ -18,19 +18,6 @@ def get_placeholder_indexes(slide_layout):
     return [placeholder.placeholder_format.idx for placeholder in slide_layout.placeholders]
 
 
-# Example DataFrame
-df = pd.DataFrame({
-    'Rang': [1, 2, 3, 4, 5],
-    'Bib': [342, 238, 563, 322, 561],
-    'Name': ['Menk Rene Pascal', 'Donner Christian', 'Pauer Torsten', 'Janas Paul Jan', 'Götze Sebastian'],
-    'Verein': ['LAZ Wuppertal', 'LAV Ribnitz-Damgarten/Sanitz', 'Sportclub Magdeburg e.V.', 'Dürener TV 1847', 'Sportclub Magdeburg e.V.'],
-    'LV': ['NO', 'MV', 'ST', 'NO', 'ST'],
-    'JG': [1983, 1980, 1982, 1980, 1984],
-    'Ergebnis': ['7,45', '7,51', '7,75', '7,79', '7,88'],
-    'Klasse': ['M40', 'M40', 'M40', 'M40', 'M40'],
-    'Info': [' ', 'PB', 'PB', ' ', ' ']
-})
-
 def dataframe_to_slides_content(df, placeholders_per_slide):
     """
     Organizes DataFrame content to fill PowerPoint slides.
@@ -84,6 +71,19 @@ def populate_template_with_text(template_path, content_data):
 
 if __name__ == "__main__":
     template_path = 'Template.pptx'
+
+    # Example DataFrame
+    df = pd.DataFrame({
+        'Rang': [1, 2, 3, 4, 5],
+        'Bib': [342, 238, 563, 322, 561],
+        'Name': ['Menk Rene Pascal', 'Donner Christian', 'Pauer Torsten', 'Janas Paul Jan', 'Götze Sebastian'],
+        'Verein': ['LAZ Wuppertal', 'LAV Ribnitz-Damgarten/Sanitz', 'Sportclub Magdeburg e.V.', 'Dürener TV 1847', 'Sportclub Magdeburg e.V.'],
+        'LV': ['NO', 'MV', 'ST', 'NO', 'ST'],
+        'JG': [1983, 1980, 1982, 1980, 1984],
+        'Ergebnis': ['7,45', '7,51', '7,75', '7,79', '7,88'],
+        'Klasse': ['M40', 'M40', 'M40', 'M40', 'M40'],
+        'Info': [' ', 'PB', 'PB', ' ', ' ']
+    })
     
     # Calculate the number of placeholders per slide
     placeholders_per_slide = len(get_placeholder_indexes(Presentation(template_path).slide_layouts[0]))
