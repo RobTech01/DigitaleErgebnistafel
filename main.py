@@ -56,24 +56,31 @@ def heat_selection(df_data):
     print(f"Selected heat: {selected_key}")
     return selected_key
 
-def populate_headers(group_header, content_headers):
-    header_index = 1
-    for content_header in content_headers:  # PowerPoint collections are 1-indexed
-        if not header_index < len(content_headers)+1:
-            logging.error("there are more content headers than Items in the header group")
+def populate_group(group, contents):
+
+    assert "Group" in group.Name, "you are trying to add text to a non group object"
+
+    content_index = 0
+    for placeholder_index in range(1, group.GroupItems.Count+1):  # PowerPoint collections are 1-indexed
+        if not content_index < len(contents)+1:
+            logging.error("there are more content items than items in the group")
             break
-        header_placeholder = group_header.GroupItems.Item(header_index)
-        if not "TextBox" in header_placeholder.Name:
-            logging.debug("skipped adding content to a rectangle in the header")
-            break
-        header_placeholder.TextFrame.TextRange.Text= content_header
-        header_index += 1
+        content_placeholder = group.GroupItems.Item(placeholder_index)
+        if not "TextBox" in content_placeholder.Name:
+            logging.debug("skipped adding content to a rectangle")
+            content_index -= 1
+            pass
+
+        content = contents[content_index]
+        content_placeholder.TextFrame.TextRange.Text = content
+        content_index += 1
+    
+    assert content_index == len(contents), "not all content has been distributed in populate_group()"
 
 
 def add_content_to_group_shapes(group_shape_list, content_per_column):
     for group_shape in group_shape_list:
 
-        assert "Group" in group_shape.Name, "you are trying to add text to a non group object"
         assert len(content_per_column) == group_shape.GroupItems.Count, "content and group must have the same amount of elements"
 
         for i, content_placeholder in enumerate(group_shape.GroupItems):
@@ -135,16 +142,49 @@ def main():
     title_placeholder = slide.Shapes.Title
     title_placeholder.TextFrame.TextRange.Text = selected_heat
 
+
+    group_header = group_objects[0]
+
+    populate_group(group_header, content_headers)
+
+
+
     available_rows = df.shape[0]
     entries_per_row = df.shape[1]
 
 
-    group_header = group_objects[0]
+    for row_index in range(0, available_rows-1):
+        row = df.iloc[row_index].tolist()
+        populate_group(group_objects[row_index+1], row)
 
-    populate_headers(group_header, content_headers)
+        time.sleep(1)
+        group_objects[row_index+1].Copy()
+                
+        # Paste the copied group onto the same slide
+        # The Paste method returns a ShapeRange object representing the pasted shapes
+        pasted_group = slide.Shapes.Paste()
+        pasted_group.Left = group_objects[row_index+1].Left + 0  # Offset by 20 points down
+        pasted_group.Top = group_objects[row_index+1].Top + 44  # Offset by 20 points down
+
+        group_objects = collect_group_shapes(slide)
+    
+    row = df.iloc[-1].tolist()
+    populate_group(group_objects[-1], row)
+    print("Group copied and pasted.")
+
+    #for group in group_objects[1:]:
+        #print(f"Selecting group: {group.Name}")
+        #group.Select(True) 
+        
+    #print(f"Shapes selected: {already_open_powerpoint.ActiveWindow.Selection.ShapeRange.Count}")
+            
 
 
 
+
+
+
+    #for i in range(1,available_rows)
 
 
     #for index, content_per_row in df.iterrows():
