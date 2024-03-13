@@ -16,7 +16,7 @@ def skip_to_page(presentation, slide_number):
         #slide_show_view.Next()
         slide_show_view.GotoSlide(slide_number)
     except AttributeError:
-        print("No active slideshow found.")
+        logging.critical("No active slideshow found.")
 
 def scan_for_shapes(slide, debug=False):
     placeholder_count = 0
