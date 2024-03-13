@@ -40,18 +40,6 @@ def collect_group_shapes(slide):
     
     return group_shape_list
 
-def process_group_shape(group_shape_list, content_per_column):
-    for group_shape in group_shape_list:
-
-        assert "Group" in group_shape.Name, "you are trying to add text to a non group object"
-        assert len(content_per_column) == group_shape.GroupItems.Count, "content and group must have the same amount of elements"
-
-        for i, content_placeholder in enumerate(group_shape.GroupItems):
-            if "TextBox" in content_placeholder.Name:
-                content_placeholder.TextFrame.TextRange.Text = content_per_column[i]
-            # Additional logic can be added here to ignore rectangles or perform other checks
-
-
 def heat_selection(df_data):
     heats = list(df_data.keys())
     print(f"Available heats: {heats}")
@@ -68,15 +56,37 @@ def heat_selection(df_data):
     print(f"Selected heat: {selected_key}")
     return selected_key
 
-def extract_headers(df_data):
+def populate_headers(group_header, content_headers):
+    header_index = 1
+    for content_header in content_headers:  # PowerPoint collections are 1-indexed
+        if not header_index < len(content_headers)+1:
+            logging.error("there are more content headers than Items in the header group")
+            break
+        header_placeholder = group_header.GroupItems.Item(header_index)
+        if not "TextBox" in header_placeholder.Name:
+            logging.debug("skipped adding content to a rectangle in the header")
+            break
+        header_placeholder.TextFrame.TextRange.Text= content_header
+        header_index += 1
+
+
+def add_content_to_group_shapes(group_shape_list, content_per_column):
+    for group_shape in group_shape_list:
+
+        assert "Group" in group_shape.Name, "you are trying to add text to a non group object"
+        assert len(content_per_column) == group_shape.GroupItems.Count, "content and group must have the same amount of elements"
+
+        for i, content_placeholder in enumerate(group_shape.GroupItems):
+            if "TextBox" in content_placeholder.Name:
+                content_placeholder.TextFrame.TextRange.Text = content_per_column[i]
+            # Additional logic can be added here to ignore rectangles or perform other checks
+
 
 
 
 def update_powerpoint_with_data(dataframes, slide):
 
-    title_placeholder = slide.Shapes.Title
     heat_name, df = next(iter(dataframes.items()))
-    title_placeholder.TextFrame.TextRange.Text = heat_name
 
 
     for i, content_titles in enumerate(df):
@@ -94,10 +104,8 @@ def update_powerpoint_with_data(dataframes, slide):
         for i, content in enumerate(content_packet_per_slide):
             content_placeholder = slide.Shapes(i+2+10)
             content_placeholder.TextFrame.TextRange.Text = content
-        time.sleep(5)
 
-    
-        
+
 
 def main():
     url = "https://ergebnisse.leichtathletik.de/Competitions/CurrentList/617972/12005"
@@ -112,39 +120,35 @@ def main():
         logging.critical("No active presentation found.")
     
     active_slide = 1
-
     num_slides = presentation.Slides.Count
     assert num_slides >= active_slide, f"you are trying to skip to slide {active_slide}, the highest page number is {num_slides}"
     slide = presentation.Slides(active_slide)
 
     shape_count = scan_for_shapes(slide)
-
     group_objects = collect_group_shapes(slide)
 
+    selected_heat = heat_selection(dataframes)
+    df = dataframes[selected_heat]
+    content_headers = df.columns.tolist()
+    logging.debug(f"Content Headers: {content_headers}")
+
+    title_placeholder = slide.Shapes.Title
+    title_placeholder.TextFrame.TextRange.Text = selected_heat
+
+    available_rows = df.shape[0]
+    entries_per_row = df.shape[1]
+
+
+    group_header = group_objects[0]
+
+    populate_headers(group_header, content_headers)
 
 
 
 
 
-
-
-
-
-    # Get the DataFrame for the selected heat
-    df = dataframes[selected_key]
-
-    # Extract headers
-    headers = df.columns.tolist()
-    print(f"Headers: {headers}")
-
-    # Extract and print data fields row by row
-    for index, row in df.iterrows():
-        print(row.tolist())
-
-
-
-
-
+    #for index, content_per_row in df.iterrows():
+        #print(content_per_row.tolist())
 
 
     
