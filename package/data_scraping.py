@@ -16,7 +16,7 @@ def extract_headers(block_header):
     
     return headers
 
-def scrape_data(url):
+def scrape_dlv_data(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.text, 'html.parser')
     
@@ -59,6 +59,6 @@ def scrape_data(url):
 
 if __name__ == "__main__":
     url = "https://ergebnisse.leichtathletik.de/Competitions/CurrentList/617972/12005"
-    dataframes = scrape_data(url)
+    dataframes = scrape_dlv_data(url)
     for heat_name, df in dataframes.items():
         print(f"Heat: {heat_name}\n", df.head(), "\n")
