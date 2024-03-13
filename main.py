@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.WARNING)
 def skip_to_page(presentation, slide_number):
 
     num_slides = presentation.Slides.Count
-    assert num_slides <= slide_number, f"you are trying to skip to slide {slide_number}, the highest page number is {num_slides}"
+    assert num_slides >= slide_number, f"you are trying to skip to slide {slide_number}, the highest page number is {num_slides}"
 
     try:
         slide_show_view = presentation.SlideShowWindow.View
@@ -52,6 +52,26 @@ def process_group_shape(group_shape_list, content_per_column):
             # Additional logic can be added here to ignore rectangles or perform other checks
 
 
+def heat_selection(df_data):
+    heats = list(df_data.keys())
+    print(f"Available heats: {heats}")
+
+    if len(heats) > 1:
+        while True:
+            selected_key = input("Please enter the key of the heat you want to use: ")
+            if selected_key in heats:
+                break
+            print("Invalid key. Please try again.")
+    else:
+        selected_key = heats[0]
+
+    print(f"Selected heat: {selected_key}")
+    return selected_key
+
+def extract_headers(df_data):
+
+
+
 def update_powerpoint_with_data(dataframes, slide):
 
     title_placeholder = slide.Shapes.Title
@@ -85,14 +105,51 @@ def main():
 
     pythoncom.CoInitialize()  # Initialize the COM library
 
-    already_open_powerpoint = win32com.client.Dispatch("PowerPoint.Application")
-    presentation = already_open_powerpoint.ActivePresentation
-
+    try:
+        already_open_powerpoint = win32com.client.Dispatch("PowerPoint.Application")
+        presentation = already_open_powerpoint.ActivePresentation
+    except AttributeError:
+        logging.critical("No active presentation found.")
+    
     active_slide = 1
+
+    num_slides = presentation.Slides.Count
+    assert num_slides >= active_slide, f"you are trying to skip to slide {active_slide}, the highest page number is {num_slides}"
     slide = presentation.Slides(active_slide)
 
-    scan_for_shapes(slide)
+    shape_count = scan_for_shapes(slide)
+
     group_objects = collect_group_shapes(slide)
+
+
+
+
+
+
+
+
+
+
+    # Get the DataFrame for the selected heat
+    df = dataframes[selected_key]
+
+    # Extract headers
+    headers = df.columns.tolist()
+    print(f"Headers: {headers}")
+
+    # Extract and print data fields row by row
+    for index, row in df.iterrows():
+        print(row.tolist())
+
+
+
+
+
+
+
+    
+
+    #process_group_shape(group_objects, )
 
 
     #update_powerpoint_with_data(dataframes, slide)
