@@ -21,7 +21,7 @@ def scrape_data(url):
     soup = BeautifulSoup(response.text, 'html.parser')
     
     dataframes = {}
-    heat_blocks = soup.find_all(class_=lambda x: x and x.startswith("runblock heatblock"))
+    heat_blocks = soup.find_all(class_=lambda x: x and (x.startswith("runblock heatblock")))  #or x.startswith("runblock roundblock") für gesamtergebnis
     
     for heat in heat_blocks:
         # Updated extraction of heat name using the text from blockname leftname
