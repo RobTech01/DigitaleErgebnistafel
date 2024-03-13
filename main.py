@@ -2,37 +2,55 @@ import win32com.client
 import pythoncom
 from package.data_scraping import scrape_dlv_data
 import time
+import logging
+
+logging.basicConfig(level=logging.WARNING)
 
 def skip_to_page(presentation, slide_number):
-    # Ensure there's an active presentation and slideshow
+
+    num_slides = presentation.Slides.Count
+    assert num_slides <= slide_number, f"you are trying to skip to slide {slide_number}, the highest page number is {num_slides}"
+
     try:
         slide_show_view = presentation.SlideShowWindow.View
         #slide_show_view.Next()
-        slide_number = 3
         slide_show_view.GotoSlide(slide_number)
     except AttributeError:
         print("No active slideshow found.")
 
-def scan_for_shapes(slide):
+def scan_for_shapes(slide, debug=False):
     placeholder_count = 0
 
     for shape in slide.Shapes:
         if hasattr(shape, 'PlaceholderFormat'):
             placeholder_count += 1
-            print(f"Placeholder found: ID {shape.Id}, Name: {shape.Name}")
+            logging.debug(f"scan_for_shapes found a Placeholder: ID {shape.Id}, Name: {shape.Name}")  
 
-    print(f"Total placeholders on slide: {placeholder_count}")
+    logging.debug(f"scan_for_shapes found a total of: {placeholder_count} Placeholders")
 
     return placeholder_count
 
 def collect_group_shapes(slide):
-    group_shapes = []
+    group_shape_list = []
     
     for shape in slide.Shapes:
         if "Group" in shape.Name:
-            group_shapes.append(shape)
+            group_shape_list.append(shape)
+            logging.debug(f"collect_group_shapes found a Group: ID {shape.Id}, Name: {shape.Name}")
     
-    return group_shapes
+    return group_shape_list
+
+def process_group_shape(group_shape_list, content_per_column):
+    for group_shape in group_shape_list:
+
+        assert "Group" in group_shape.Name, "you are trying to add text to a non group object"
+        assert len(content_per_column) == group_shape.GroupItems.Count, "content and group must have the same amount of elements"
+
+        for i, content_placeholder in enumerate(group_shape.GroupItems):
+            if "TextBox" in content_placeholder.Name:
+                content_placeholder.TextFrame.TextRange.Text = content_per_column[i]
+            # Additional logic can be added here to ignore rectangles or perform other checks
+
 
 def update_powerpoint_with_data(dataframes, slide):
 
@@ -75,7 +93,6 @@ def main():
 
     scan_for_shapes(slide)
     group_objects = collect_group_shapes(slide)
-    print(f"Group found: ID {group_objects[0].Id}, Name: {group_objects[0].Name}")
 
 
     #update_powerpoint_with_data(dataframes, slide)
