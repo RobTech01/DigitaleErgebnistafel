@@ -21,7 +21,7 @@ def scrape_dlv_data(url):
     soup = BeautifulSoup(response.text, 'html.parser')
     
     dataframes = {}
-    heat_blocks = soup.find_all(class_=lambda x: x and (x.startswith("runblock heatblock")))  #or x.startswith("runblock roundblock") für gesamtergebnis
+    heat_blocks = soup.find_all(class_=lambda x: x and (x.startswith("runblock heatblock") or x.startswith("runblock roundblock")))                                
     
     for heat in heat_blocks:
         # Updated extraction of heat name using the text from blockname leftname
@@ -32,6 +32,7 @@ def scrape_dlv_data(url):
         result_blocks = heat.find_all(class_="resultblock")
         
         heat_data = []
+
         for block in result_blocks:
             block_table = block.find(class_="blocktable")
             block_header = block_table.find(class_="blockheader")
