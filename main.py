@@ -101,7 +101,7 @@ def main():
     except AttributeError:
         logging.critical("No active presentation found.")
     
-    active_slide = 1
+    active_slide = 2
     num_slides = presentation.Slides.Count
     assert num_slides >= active_slide, f"you are trying to skip to slide {active_slide}, the highest page number is {num_slides}"
     slide = presentation.Slides(active_slide)
@@ -124,13 +124,18 @@ def main():
 
     populate_group(group_header, content_headers)
 
+    time.sleep(1)
+
+    assert presentation.SlideShowWindow, "no active slideshow"
+    presentation.SlideShowWindow.View.Next()
+
     time.sleep(2)
 
-    available_rows = df.shape[0]
+    participant_count = df.shape[0]
     entries_per_row = df.shape[1]
 
 
-    for row_index in range(0, available_rows-1):
+    for row_index in range(0, participant_count-1):
         row = df.iloc[row_index].tolist()
         populate_group(group_objects[row_index+1], row)
 
@@ -151,45 +156,34 @@ def main():
     populate_group(group_objects[-1], row)
     print("Group copied and pasted.")
 
+    content_groups = group_objects[1:]
 
-    shapes_to_group = group_objects[1:]
+    assert participant_count == df.shape[0], "there seems to be a different amount of rows and data entires"
+
+    entries_per_slide = 8
+    initial_slide_index = 2 
+    movement_per_entry = 44  
+    slides_needed = -(-participant_count // entries_per_slide) -1
             
-    slide_index = 1
-    first_slide = presentation.Slides(slide_index)
-    first_slide.Duplicate()
+    for slide_num in range(slides_needed):
+        content_slide = presentation.Slides(initial_slide_index + slide_num)
+        duplicated_slide = content_slide.Duplicate().Item(1)
+        
+        group_objects = collect_group_shapes(duplicated_slide)
+        
+        content_groups = group_objects[1:]
+        
+        if slide_num == slides_needed - 1:  # If it's the last slide
+            adjustment_factor = participant_count % entries_per_slide or entries_per_slide
+        else:
+            adjustment_factor = entries_per_slide
 
-    active_slide = 2
-    num_slides = presentation.Slides.Count
-    assert num_slides >= active_slide, f"you are trying to skip to slide {active_slide}, the highest page number is {num_slides}"
-    slide = presentation.Slides(active_slide)
+        for group in content_groups:
+            group.Top -= movement_per_entry * adjustment_factor
 
-    group_objects = collect_group_shapes(slide)
-
-    last_group = group_objects[1:]
-    participant_count = len(last_group)
-    if(participant_count > 8):
-        for group in last_group:
-            group.Top -= 44 * (participant_count -8)
-
-
-    assert presentation.SlideShowWindow, "no active slideshow"
-    presentation.SlideShowWindow.View.Next()
-
-    #slide_show_view.Next()
-
-    #slide_show_view.GotoSlide(slide_number)
-
-
-    #for i in range(1,available_rows)
-
-
-    #for index, content_per_row in df.iterrows():
-        #print(content_per_row.tolist())
-
-
-    
-
-    #process_group_shape(group_objects, )
+        if presentation.SlideShowWindow:
+            presentation.SlideShowWindow.View.Next()
+            time.sleep(5)  # Adjust the sleep time as needed
 
 
 if __name__ == "__main__":
