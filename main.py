@@ -35,7 +35,7 @@ def collect_group_shapes(slide):
     
     for shape in slide.Shapes:
         if "Group" in shape.Name:
-            group_shape_list.append(shape)
+            group_shape_list.insert(0, shape)  #win32 detects from background layer to the front. we want the header at index 0
             logging.debug(f"collect_group_shapes found a Group: ID {shape.Id}, Name: {shape.Name}")
     
     return group_shape_list
@@ -62,8 +62,8 @@ def populate_group(group, contents):
 
     content_index = 0
     for placeholder_index in range(1, group.GroupItems.Count+1):  # PowerPoint collections are 1-indexed
-        if not content_index < len(contents)+1:
-            logging.error("there are more content items than items in the group")
+        if content_index >= len(contents):
+            logging.error("there are more group items than content")
             break
         content_placeholder = group.GroupItems.Item(placeholder_index)
         if not "TextBox" in content_placeholder.Name:
@@ -89,33 +89,8 @@ def add_content_to_group_shapes(group_shape_list, content_per_column):
             # Additional logic can be added here to ignore rectangles or perform other checks
 
 
-
-
-def update_powerpoint_with_data(dataframes, slide):
-
-    heat_name, df = next(iter(dataframes.items()))
-
-
-    for i, content_titles in enumerate(df):
-        content_title_placeholder = slide.Shapes(i+2)
-        content_title_placeholder.TextFrame.TextRange.Text = content_titles
-        
-    data_flat = df.astype(str).values.flatten()
-
-    placeholder_count = scan_for_shapes(slide)
-
-    non_data_fields = 11
-    content_for_slides = [data_flat[i:i + placeholder_count-11] for i in range(0, len(data_flat), placeholder_count-non_data_fields)]
-
-    for content_packet_per_slide in content_for_slides:
-        for i, content in enumerate(content_packet_per_slide):
-            content_placeholder = slide.Shapes(i+2+10)
-            content_placeholder.TextFrame.TextRange.Text = content
-
-
-
 def main():
-    url = "https://ergebnisse.leichtathletik.de/Competitions/CurrentList/617972/12005"
+    url = "https://ergebnisse.leichtathletik.de/Competitions/StartList/509875/9812"
     dataframes = scrape_dlv_data(url)
 
     pythoncom.CoInitialize()  # Initialize the COM library
@@ -145,9 +120,11 @@ def main():
 
     group_header = group_objects[0]
 
+    print(content_headers)
+
     populate_group(group_header, content_headers)
 
-
+    time.sleep(2)
 
     available_rows = df.shape[0]
     entries_per_row = df.shape[1]
@@ -163,8 +140,10 @@ def main():
         # Paste the copied group onto the same slide
         # The Paste method returns a ShapeRange object representing the pasted shapes
         pasted_group = slide.Shapes.Paste()
+        pasted_group.ZOrder(1)
         pasted_group.Left = group_objects[row_index+1].Left + 0  # Offset by 20 points down
         pasted_group.Top = group_objects[row_index+1].Top + 44  # Offset by 20 points down
+
 
         group_objects = collect_group_shapes(slide)
     
@@ -172,16 +151,33 @@ def main():
     populate_group(group_objects[-1], row)
     print("Group copied and pasted.")
 
-    #for group in group_objects[1:]:
-        #print(f"Selecting group: {group.Name}")
-        #group.Select(True) 
-        
-    #print(f"Shapes selected: {already_open_powerpoint.ActiveWindow.Selection.ShapeRange.Count}")
+
+    shapes_to_group = group_objects[1:]
             
+    slide_index = 1
+    first_slide = presentation.Slides(slide_index)
+    first_slide.Duplicate()
+
+    active_slide = 2
+    num_slides = presentation.Slides.Count
+    assert num_slides >= active_slide, f"you are trying to skip to slide {active_slide}, the highest page number is {num_slides}"
+    slide = presentation.Slides(active_slide)
+
+    group_objects = collect_group_shapes(slide)
+
+    last_group = group_objects[1:]
+    participant_count = len(last_group)
+    if(participant_count > 8):
+        for group in last_group:
+            group.Top -= 44 * (participant_count -8)
 
 
+    assert presentation.SlideShowWindow, "no active slideshow"
+    presentation.SlideShowWindow.View.Next()
 
+    #slide_show_view.Next()
 
+    #slide_show_view.GotoSlide(slide_number)
 
 
     #for i in range(1,available_rows)
@@ -195,8 +191,6 @@ def main():
 
     #process_group_shape(group_objects, )
 
-
-    #update_powerpoint_with_data(dataframes, slide)
 
 if __name__ == "__main__":
     main()
