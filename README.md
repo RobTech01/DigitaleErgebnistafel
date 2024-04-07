@@ -16,7 +16,7 @@ The project was initiated to digitize results and graphically display lane occup
 ## Usage
 Note: The URL for the results page is currently hardcoded into the Python code. Future updates will allow specifying the URL directly via a CLI command.
 
-### PowerPoint Design Requirements
+## PowerPoint Design Requirements
 - Colors and elements within the PowerPoint slides are customizable.
 - Elements can be added but should not be grouped.
 - The structure of Slide 2 must remain consistent to ensure proper functionality.
