@@ -11,7 +11,7 @@ The project was initiated to graphically display lane occupations and rankings f
 - **Requirements**: Python 3.x is required.
 - **Dependencies**: Install all necessary dependencies using the provided `requirements.txt` file with the command:  
   `pip install -r requirements.txt`.
-- **PowerPoint Template**: Ensure the PowerPoint template is in the same folder as `main.py`.
+- **PowerPoint Template**: Ensure the PowerPoint template is in the same folder as `main.py` or as otherwise specified in the code.
 
 ## Usage
 To use the script, have an active PowerPoint file open (in Presenter mode f5) and check the box for developer options. Deactivate the permissions once finished.
