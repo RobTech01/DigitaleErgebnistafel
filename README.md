@@ -15,6 +15,7 @@ The project was initiated to graphically display lane occupations and rankings f
 
 ## Usage
 To use the script, have an active PowerPoint file open (in Presenter mode f5) and check the box for developer options. Deactivate the permissions once finished.
+
 Note: The URL for the results page is currently hardcoded into the Python code. If this tools prooves useful / needed, future updates will allow specifying the URL directly via a CLI command.
 
 ## PowerPoint Design Requirements
