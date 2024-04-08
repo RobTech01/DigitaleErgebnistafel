@@ -21,8 +21,8 @@ Note: The URL for the results page is currently hardcoded into the Python code. 
 ## PowerPoint Design Requirements
 - Colors and elements within the PowerPoint slides are customizable.
 - Elements can be added but should not be grouped.
-- DO NOT delete slide 1 or 2, however they can be changed based on the rules outlined above.
-- The structure of Slide 2 must remain consistent to ensure proper functionality.
+- The structure of Slide 1 and 2 must remain consistent to ensure proper functionality.
+- Editing is allowed, within the scope of the rules outlined above.
 
 ## Features and Benefits
 - **Ease of Redesign and Adjustment**: Utilizes PowerPoint for straightforward customization.
