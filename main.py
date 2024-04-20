@@ -74,13 +74,13 @@ def main():
     participant_count = df.shape[0]  # Total number of participants
     entries_per_row = df.shape[1]  # Assuming this is used somewhere in populate_group
     initial_slide_index = 2  # The slide to start duplicating from
-    movement_per_entry = 44  # Movement for each entry
-    entries_per_slide = 8  # Number of entries that fit in one slide
+    vertical_movement_per_entry = 44  # Movement for each entry
+    horizontal_movement_per_entry = -905  # Movement for each entry
+    entries_per_slide = 8  # Number ofentries that fit in one slide
 
     slide = presentation.Slides(initial_slide_index)
     group_objects = collect_group_shapes(slide)
     row = df.iloc[0].tolist()
-    populate_group(group_objects[-1], row)
     time.sleep(.75)
 
     for row_index in range(participant_count-1):
@@ -90,22 +90,26 @@ def main():
             group_objects = collect_group_shapes(slide)  
             
             for group in group_objects[1:]:
-                group.Top -= movement_per_entry * entries_per_slide
+                group.Top -= vertical_movement_per_entry * entries_per_slide
 
             if presentation.SlideShowWindow:
                 presentation.SlideShowWindow.View.Next()
                 time.sleep(5)  
 
-        group_objects[-1].Copy()
+        group_objects[1].Copy()
         pasted_group = slide.Shapes.Paste()
         pasted_group.ZOrder(1)
-        pasted_group.Left = group_objects[-1].Left
-        pasted_group.Top = group_objects[-1].Top + movement_per_entry
+        vertical_adjustment = vertical_movement_per_entry * row_index
+        horizontal_adjustment = horizontal_movement_per_entry
 
-        group_objects = collect_group_shapes(slide)
-        row = df.iloc[row_index+1].tolist()
-        populate_group(group_objects[-1], row)
+        # Populate the new group
+        row = df.iloc[row_index].tolist()
+        populate_group(pasted_group, row)
         time.sleep(.75)
+
+        pasted_group.Top = group_objects[1].Top + vertical_adjustment
+        pasted_group.Left = group_objects[1].Left + horizontal_adjustment
+
 
     # Ensure group_objects is updated for the final operations
     group_objects = collect_group_shapes(slide)
@@ -117,7 +121,7 @@ def main():
     participants_on_last_slide = participant_count % entries_per_slide if participant_count % entries_per_slide != 0 else entries_per_slide
 
     for group in group_objects[1:]:
-        group.Top -= movement_per_entry * participants_on_last_slide
+        group.Top -= vertical_movement_per_entry * participants_on_last_slide
 
     if presentation.SlideShowWindow:
                 presentation.SlideShowWindow.View.Next()
