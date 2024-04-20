@@ -1,3 +1,4 @@
+from package.presentation_actions import skip_to_page, collect_group_shapes, populate_group, scan_for_shapes, add_content_to_group_shapes
 import win32com.client
 import pythoncom
 from package.data_scraping import scrape_dlv_data
@@ -6,39 +7,6 @@ import logging
 
 logging.basicConfig(level=logging.WARNING)
 
-def skip_to_page(presentation, slide_number):
-
-    num_slides = presentation.Slides.Count
-    assert num_slides >= slide_number, f"you are trying to skip to slide {slide_number}, the highest page number is {num_slides}"
-
-    try:
-        slide_show_view = presentation.SlideShowWindow.View
-        #slide_show_view.Next()
-        slide_show_view.GotoSlide(slide_number)
-    except AttributeError:
-        logging.critical("No active slideshow found.")
-
-def scan_for_shapes(slide, debug=False):
-    placeholder_count = 0
-
-    for shape in slide.Shapes:
-        if hasattr(shape, 'PlaceholderFormat'):
-            placeholder_count += 1
-            logging.debug(f"scan_for_shapes found a Placeholder: ID {shape.Id}, Name: {shape.Name}")  
-
-    logging.debug(f"scan_for_shapes found a total of: {placeholder_count} Placeholders")
-
-    return placeholder_count
-
-def collect_group_shapes(slide):
-    group_shape_list = []
-    
-    for shape in slide.Shapes:
-        if "Group" in shape.Name:
-            group_shape_list.insert(0, shape)  #win32 detects from background layer to the front. we want the header at index 0
-            logging.debug(f"collect_group_shapes found a Group: ID {shape.Id}, Name: {shape.Name}")
-    
-    return group_shape_list
 
 def heat_selection(df_data):
     heats = list(df_data.keys())
@@ -55,38 +23,6 @@ def heat_selection(df_data):
 
     print(f"Selected heat: {selected_key}")
     return selected_key
-
-def populate_group(group, contents):
-
-    assert "Group" in group.Name, "you are trying to add text to a non group object"
-
-    content_index = 0
-    for placeholder_index in range(1, group.GroupItems.Count+1):  # PowerPoint collections are 1-indexed
-        if content_index >= len(contents):
-            logging.error("there are more group items than content")
-            break
-        content_placeholder = group.GroupItems.Item(placeholder_index)
-        if not "TextBox" in content_placeholder.Name:
-            logging.debug("skipped adding content to a rectangle")
-            content_index -= 1
-            pass
-
-        content = contents[content_index]
-        content_placeholder.TextFrame.TextRange.Text = content
-        content_index += 1
-    
-    assert content_index == len(contents), "not all content has been distributed in populate_group()"
-
-
-def add_content_to_group_shapes(group_shape_list, content_per_column):
-    for group_shape in group_shape_list:
-
-        assert len(content_per_column) == group_shape.GroupItems.Count, "content and group must have the same amount of elements"
-
-        for i, content_placeholder in enumerate(group_shape.GroupItems):
-            if "TextBox" in content_placeholder.Name:
-                content_placeholder.TextFrame.TextRange.Text = content_per_column[i]
-            # Additional logic can be added here to ignore rectangles or perform other checks
 
 
 def main():
@@ -135,55 +71,58 @@ def main():
     entries_per_row = df.shape[1]
 
 
-    for row_index in range(0, participant_count-1):
-        row = df.iloc[row_index].tolist()
-        populate_group(group_objects[row_index+1], row)
+    participant_count = df.shape[0]  # Total number of participants
+    entries_per_row = df.shape[1]  # Assuming this is used somewhere in populate_group
+    initial_slide_index = 2  # The slide to start duplicating from
+    movement_per_entry = 44  # Movement for each entry
+    entries_per_slide = 8  # Number of entries that fit in one slide
 
-        time.sleep(1)
-        group_objects[row_index+1].Copy()
-                
-        # Paste the copied group onto the same slide
-        # The Paste method returns a ShapeRange object representing the pasted shapes
+    slide = presentation.Slides(initial_slide_index)
+    group_objects = collect_group_shapes(slide)
+    row = df.iloc[0].tolist()
+    populate_group(group_objects[-1], row)
+    time.sleep(.75)
+
+    for row_index in range(participant_count-1):
+        if row_index != 0 and row_index != entries_per_slide and row_index % entries_per_slide == 0:
+            duplicated_slide = slide.Duplicate().Item(1)
+            slide = duplicated_slide  
+            group_objects = collect_group_shapes(slide)  
+            
+            for group in group_objects[1:]:
+                group.Top -= movement_per_entry * entries_per_slide
+
+            if presentation.SlideShowWindow:
+                presentation.SlideShowWindow.View.Next()
+                time.sleep(5)  
+
+        group_objects[-1].Copy()
         pasted_group = slide.Shapes.Paste()
         pasted_group.ZOrder(1)
-        pasted_group.Left = group_objects[row_index+1].Left + 0  # Offset by 20 points down
-        pasted_group.Top = group_objects[row_index+1].Top + 44  # Offset by 20 points down
-
+        pasted_group.Left = group_objects[-1].Left
+        pasted_group.Top = group_objects[-1].Top + movement_per_entry
 
         group_objects = collect_group_shapes(slide)
+        row = df.iloc[row_index+1].tolist()
+        populate_group(group_objects[-1], row)
+        time.sleep(.75)
+
+    # Ensure group_objects is updated for the final operations
+    group_objects = collect_group_shapes(slide)
+
+    duplicated_slide = slide.Duplicate().Item(1)
+    slide = duplicated_slide  
+    group_objects = collect_group_shapes(slide) 
+
+    participants_on_last_slide = participant_count % entries_per_slide if participant_count % entries_per_slide != 0 else entries_per_slide
+
+    for group in group_objects[1:]:
+        group.Top -= movement_per_entry * participants_on_last_slide
+
+    if presentation.SlideShowWindow:
+                presentation.SlideShowWindow.View.Next()
+                time.sleep(5)  
     
-    row = df.iloc[-1].tolist()
-    populate_group(group_objects[-1], row)
-    print("Group copied and pasted.")
-
-    content_groups = group_objects[1:]
-
-    assert participant_count == df.shape[0], "there seems to be a different amount of rows and data entires"
-
-    entries_per_slide = 8
-    initial_slide_index = 2 
-    movement_per_entry = 44  
-    slides_needed = -(-participant_count // entries_per_slide) -1
-            
-    for slide_num in range(slides_needed):
-        content_slide = presentation.Slides(initial_slide_index + slide_num)
-        duplicated_slide = content_slide.Duplicate().Item(1)
-        
-        group_objects = collect_group_shapes(duplicated_slide)
-        
-        content_groups = group_objects[1:]
-        
-        if slide_num == slides_needed - 1:  # If it's the last slide
-            adjustment_factor = participant_count % entries_per_slide or entries_per_slide
-        else:
-            adjustment_factor = entries_per_slide
-
-        for group in content_groups:
-            group.Top -= movement_per_entry * adjustment_factor
-
-        if presentation.SlideShowWindow:
-            presentation.SlideShowWindow.View.Next()
-            time.sleep(5)  # Adjust the sleep time as needed
 
 
 if __name__ == "__main__":
