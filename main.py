@@ -42,7 +42,7 @@ def fetch_and_update_presentation(url : str, selected_heat : str, column_headers
              time.sleep(2)
              continue
         
-        dnf_entries = new_df['Ergebnis'].isin(['n.a.', 'ab.', 'aufg.'])
+        dnf_entries = new_df['Ergebnis'].isin(['n.a.', 'ab.', 'aufg.', 'n.a.', 'disq.', 'DNS', 'DNF', 'DQ'])
         dnf_df = new_df[dnf_entries]
         new_df = new_df[~dnf_entries]
 
