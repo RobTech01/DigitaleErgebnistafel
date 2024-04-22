@@ -1,6 +1,7 @@
 import logging
 import win32com.client
 import pythoncom
+import time
 
 def scan_for_shapes(slide, debug=False):
     placeholder_count = 0
@@ -70,3 +71,43 @@ def add_content_to_group_shapes(group_shape_list, content_per_column):
             # Additional logic can be added here to ignore rectangles or perform other checks
 
 
+def update_presentation(df, presentation, update_count, entries_per_slide):
+    participant_count = df.shape[0]  # Total number of new participants to add
+    entries_per_row = df.shape[1]  # Assuming this is used somewhere in populate_group
+    initial_slide_index = 2  # Start from this slide index
+    vertical_movement_per_entry = 44  # Vertical movement for each entry
+    horizontal_movement_per_entry = -905  # Horizontal movement for each entry
+ 
+    slide = presentation.Slides(initial_slide_index)
+    group_objects = collect_group_shapes(slide)
+
+    for row_index in range(participant_count):
+
+        if update_count >= entries_per_slide:
+            logging.info('Addinga nother slide after ', update_count, 'participants')
+            duplicated_slide = slide.Duplicate().Item(1)
+            slide = duplicated_slide
+            group_objects = collect_group_shapes(slide)
+
+            for group in group_objects[1:]:
+                group.Top -= vertical_movement_per_entry
+
+            if presentation.SlideShowWindow and update_count!=entries_per_slide:
+                presentation.SlideShowWindow.View.Next()
+                time.sleep(5)
+
+        group_objects[1].Copy()
+        pasted_group = slide.Shapes.Paste()
+        pasted_group.ZOrder(1)
+        vertical_adjustment = vertical_movement_per_entry * update_count
+        horizontal_adjustment = horizontal_movement_per_entry
+        row = df.iloc[row_index].tolist()
+        populate_group(pasted_group, row)
+        pasted_group.Top = group_objects[1].Top + vertical_adjustment
+        pasted_group.Left = group_objects[1].Left + horizontal_adjustment
+
+        update_count += 1
+
+        time.sleep(.75)
+
+    return update_count
