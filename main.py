@@ -1,14 +1,15 @@
-from package.presentation_actions import skip_to_page, collect_group_shapes, populate_group, scan_for_shapes, add_content_to_group_shapes
+from package.presentation_actions import skip_to_page, collect_group_shapes, populate_group, scan_for_shapes, add_content_to_group_shapes, update_presentation
 import win32com.client
 import pythoncom
 from package.data_scraping import scrape_dlv_data
 import time
 import logging
+import pandas as pd
 
 logging.basicConfig(level=logging.WARNING)
 
 
-def heat_selection(df_data):
+def heat_selection(df_data : pd.DataFrame) -> str:
     heats = list(df_data.keys())
     print(f"Available heats: {heats}")
 
@@ -24,9 +25,81 @@ def heat_selection(df_data):
     print(f"Selected heat: {selected_key}")
     return selected_key
 
+def fetch_and_update_presentation(url : str, selected_heat : str, column_headers, presentation) -> None:
+    entries_per_slide = 8  # Number of entries that fit in one slide
+
+    old_df = pd.DataFrame()  # Start with an empty DataFrame
+    update_count = 0
+
+    dropped_row_count = 1
+
+    while not dropped_row_count == 0:
+
+        new_df = scrape_dlv_data(url)[selected_heat]
+
+        if new_df.empty:
+             logging.info("No data retreived. Checking again..")
+             time.sleep(2)
+             continue
+        
+        dnf_entries = new_df['Ergebnis'].isin(['n.a.', 'ab.', 'aufg.'])
+        dnf_df = new_df[dnf_entries]
+        new_df = new_df[~dnf_entries]
+
+        if old_df.keys().empty:
+             old_df = pd.DataFrame(columns=column_headers)
+       
+        if not new_df.equals(old_df):
+            
+            data_row_count = len(new_df)
+            drop_unfinished_ranks = new_df['Rang'].ne('')
+            dropped_row_count = len (new_df) - len(drop_unfinished_ranks)
+            
+            new_ranks = new_df[new_df['Rang'].ne('') & (~new_df['Rang'].isin(old_df['Rang'].dropna()))]
+
+            if not new_ranks.empty:
+                logging.info("New ranked entries found, updating presentation.")
+                update_count_buffer = update_presentation(new_ranks, presentation, update_count, entries_per_slide)
+                update_count = update_count_buffer
+            
+            old_df = new_df.copy()
+
+        else:
+            logging.info("No new ranked entries or changes detected. Checking again in 1 second.")
+        
+        print('athletes not finished: ', dropped_row_count, '/', data_row_count)
+        time.sleep(2)
+    
+    #update by dnf_ranks if they exist
+    if not dnf_df.empty:
+        update_count_buffer = update_presentation(dnf_df, presentation, update_count, entries_per_slide)
+        update_count = update_count_buffer
+        logging.info("Adding DNF athletes: ", len(dnf_df))        
+
+    assert presentation.SlideShowWindow, "no active slideshow"
+    presentation.SlideShowWindow.View.Next()
+    time.sleep(5)
+
+    if update_count > entries_per_slide:
+        index_last_slide = presentation.Slides.Count
+        slide = presentation.Slides(index_last_slide)
+        duplicated_slide = slide.Duplicate().Item(1)
+        slide = duplicated_slide
+        group_objects = collect_group_shapes(slide)
+
+        for group in group_objects[1:]:
+            group.Top += 44 * (update_count-entries_per_slide)
+    
+        assert presentation.SlideShowWindow, "no active slideshow"
+        presentation.SlideShowWindow.View.Next()
+
+    print("All athletes displayed")
+
 
 def main():
-    url = "https://ergebnisse.leichtathletik.de/Competitions/StartList/509875/9812"
+    logging.basicConfig(level=logging.INFO)
+    
+    url = "https://ergebnisse.leichtathletik.de/Competitions/CurrentList/509866/9812#h8"
     dataframes = scrape_dlv_data(url)
 
     pythoncom.CoInitialize()  # Initialize the COM library
@@ -50,6 +123,7 @@ def main():
     content_headers = df.columns.tolist()
     logging.debug(f"Content Headers: {content_headers}")
 
+
     title_placeholder = slide.Shapes.Title
     title_placeholder.TextFrame.TextRange.Text = selected_heat
 
@@ -67,66 +141,11 @@ def main():
 
     time.sleep(2)
 
-    participant_count = df.shape[0]
-    entries_per_row = df.shape[1]
-
-
-    participant_count = df.shape[0]  # Total number of participants
-    entries_per_row = df.shape[1]  # Assuming this is used somewhere in populate_group
-    initial_slide_index = 2  # The slide to start duplicating from
-    vertical_movement_per_entry = 44  # Movement for each entry
-    horizontal_movement_per_entry = -905  # Movement for each entry
-    entries_per_slide = 8  # Number ofentries that fit in one slide
-
-    slide = presentation.Slides(initial_slide_index)
-    group_objects = collect_group_shapes(slide)
-    row = df.iloc[0].tolist()
-    time.sleep(.75)
-
-    for row_index in range(participant_count-1):
-        if row_index != 0 and row_index != entries_per_slide and row_index % entries_per_slide == 0:
-            duplicated_slide = slide.Duplicate().Item(1)
-            slide = duplicated_slide  
-            group_objects = collect_group_shapes(slide)  
-            
-            for group in group_objects[1:]:
-                group.Top -= vertical_movement_per_entry * entries_per_slide
-
-            if presentation.SlideShowWindow:
-                presentation.SlideShowWindow.View.Next()
-                time.sleep(5)  
-
-        group_objects[1].Copy()
-        pasted_group = slide.Shapes.Paste()
-        pasted_group.ZOrder(1)
-        vertical_adjustment = vertical_movement_per_entry * row_index
-        horizontal_adjustment = horizontal_movement_per_entry
-
-        # Populate the new group
-        row = df.iloc[row_index].tolist()
-        populate_group(pasted_group, row)
-        time.sleep(.75)
-
-        pasted_group.Top = group_objects[1].Top + vertical_adjustment
-        pasted_group.Left = group_objects[1].Left + horizontal_adjustment
-
-
-    # Ensure group_objects is updated for the final operations
-    group_objects = collect_group_shapes(slide)
-
-    duplicated_slide = slide.Duplicate().Item(1)
-    slide = duplicated_slide  
-    group_objects = collect_group_shapes(slide) 
-
-    participants_on_last_slide = participant_count % entries_per_slide if participant_count % entries_per_slide != 0 else entries_per_slide
-
-    for group in group_objects[1:]:
-        group.Top -= vertical_movement_per_entry * participants_on_last_slide
-
-    if presentation.SlideShowWindow:
-                presentation.SlideShowWindow.View.Next()
-                time.sleep(5)  
+    fetch_and_update_presentation(url, selected_heat, content_headers, presentation)
     
+    assert presentation.SlideShowWindow, "no active slideshow"
+    time.sleep(15) 
+    presentation.SlideShowWindow.View.First()  # Go to the first slide
 
 
 if __name__ == "__main__":
