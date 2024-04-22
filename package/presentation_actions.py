@@ -84,7 +84,7 @@ def update_presentation(df, presentation, update_count, entries_per_slide):
     for row_index in range(participant_count):
 
         if update_count >= entries_per_slide:
-            logging.info('Addinga nother slide after ', update_count, 'participants')
+            logging.info('Addinga another slide after ', update_count, 'participants')
             duplicated_slide = slide.Duplicate().Item(1)
             slide = duplicated_slide
             group_objects = collect_group_shapes(slide)
