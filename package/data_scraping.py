@@ -16,46 +16,44 @@ def extract_headers(block_header):
     
     return headers
 
+
+
 def scrape_dlv_data(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.text, 'html.parser')
     
     dataframes = {}
-    heat_blocks = soup.find_all(class_=lambda x: x and (x.startswith("runblock heatblock") or x.startswith("runblock roundblock") or x.startswith("startlistblock")))                                
+    heat_blocks = soup.find_all(class_=lambda x: x and (x.startswith("runblock heatblock") or x.startswith("runblock roundblock") or x.startswith("startlistblock")))
     
     for heat in heat_blocks:
-        # Updated extraction of heat name using the text from blockname leftname
         blockname = heat.find(class_="blockname")
         leftname = blockname.find(class_="leftname") if blockname else None
         heat_name = leftname.get_text(strip=True) if leftname else "Unknown Heat"
         
         result_blocks = heat.find_all(class_="resultblock")
         
-        heat_data = []
-
         for block in result_blocks:
             block_table = block.find(class_="blocktable")
             block_header = block_table.find(class_="blockheader")
             headers = extract_headers(block_header)
             
             entries = block_table.find_all("div", recursive=False)[1:]  # Skipping the blockheader
+            heat_data = []
             
             for entry in entries:
                 entry_data = {}
                 columns = entry.find_all("div", recursive=False)
-                
+
                 for i, header_tuple in enumerate(headers):
                     column_data = columns[i].find_all("div")
-                    
                     entry_data[header_tuple[0]] = column_data[0].get_text(" ", strip=True) if column_data else ""
                     
                     if len(header_tuple) == 2 and len(column_data) > 1:
                         entry_data[header_tuple[1]] = column_data[1].get_text(" ", strip=True)
-                
+
                 heat_data.append(entry_data)
-        
-        dataframes[heat_name] = pd.DataFrame(heat_data)
-    
+                
+            dataframes[heat_name] = pd.DataFrame(heat_data)
     return dataframes
 
 if __name__ == "__main__":
