@@ -143,10 +143,6 @@ def main():
 
     fetch_and_update_presentation(url, selected_heat, content_headers, presentation)
     
-    assert presentation.SlideShowWindow, "no active slideshow"
-    time.sleep(15) 
-    presentation.SlideShowWindow.View.First()  # Go to the first slide
-
 
 if __name__ == "__main__":
     main()
