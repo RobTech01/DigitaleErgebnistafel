@@ -6,78 +6,97 @@ import time
 import logging
 import pandas as pd
 
-logging.basicConfig(level=logging.WARNING)
+logging.basicConfig(level=logging.INFO)
 
 
 def heat_selection(df_data : pd.DataFrame) -> str:
     heats = list(df_data.keys())
-    print(f"Available heats: {heats}")
+    for i, heat in enumerate(heats, 1):
+        print(f"{i}. {heat}")
+    print("Select a Number")
 
-    if len(heats) > 1:
-        while True:
-            selected_key = input("Please enter the key of the heat you want to use: ")
-            if selected_key in heats:
-                break
-            print("Invalid key. Please try again.")
+    user_input = input("> ").strip()
+    if user_input.isdigit() and 1 <= int(user_input) <= len(heats):
+        return heats[int(user_input) - 1]
     else:
-        selected_key = heats[0]
+        print("invalid input choose again")
+        return heat_selection(df_data)
 
-    print(f"Selected heat: {selected_key}")
-    return selected_key
 
 def fetch_and_update_presentation(url : str, selected_heat : str, column_headers, presentation) -> None:
     entries_per_slide = 8  # Number of entries that fit in one slide
+    vertical_movement_per_entry = 44  # Vertical movement for each entry
+    recheck_time = 3   # in s
 
-    old_df = pd.DataFrame()  # Start with an empty DataFrame
+    old_df = pd.DataFrame(columns=column_headers)
     update_count = 0
 
     dropped_row_count = 1
 
-    while not dropped_row_count == 0:
-
+    while True:
         new_df = scrape_dlv_data(url)[selected_heat]
 
         if new_df.empty:
-             logging.info("No data retreived. Checking again..")
-             time.sleep(2)
-             continue
+            logging.info("No data retrieved. Checking again...")
+            continue
         
+        total_runners = len(new_df)
+
+        # Filter to identify only new or updated rows
+        if not old_df.empty:
+            new_df = pd.concat([old_df, new_df]).drop_duplicates(keep=False)
+
+        # Filter out DNF and similar entries
         dnf_entries = new_df['Ergebnis'].isin(['n.a.', 'ab.', 'aufg.', 'n.a.', 'disq.', 'DNS', 'DNF', 'DQ'])
         dnf_df = new_df[dnf_entries]
         new_df = new_df[~dnf_entries]
-
-        if old_df.keys().empty:
-             old_df = pd.DataFrame(columns=column_headers)
        
-        if not new_df.equals(old_df):
-            
-            data_row_count = len(new_df)
-            drop_unfinished_ranks = new_df['Rang'].ne('')
-            dropped_row_count = len (new_df) - len(drop_unfinished_ranks)
-            
-            new_ranks = new_df[new_df['Rang'].ne('') & (~new_df['Rang'].isin(old_df['Rang'].dropna()))]
-
-            if not new_ranks.empty:
-                logging.info("New ranked entries found, updating presentation.")
-                update_count_buffer = update_presentation(new_ranks, presentation, update_count, entries_per_slide)
-                update_count = update_count_buffer
-            
-            old_df = new_df.copy()
-
-        else:
-            logging.info("No new ranked entries or changes detected. Checking again in 1 second.")
+        # Filter out entries without a completed rank (unfinished athletes)
+        new_df = new_df[new_df['Rang'].ne('')]
         
-        print('athletes not finished: ', dropped_row_count, '/', data_row_count)
-        time.sleep(2)
+        if not new_df.empty:
+            logging.info("New ranked entries found, updating presentation.")
+            update_count = update_presentation(new_df, presentation, update_count, entries_per_slide, vertical_movement_per_entry)
+        
+        old_df = pd.concat([old_df, new_df])
+        captured_athletes = len(old_df) + len(dnf_df)
+        logging.info('missing runners %s / %s', captured_athletes, total_runners)
+
+        if len(old_df)+len(dnf_df) == total_runners:
+            logging.info('All %s out of %s runners are finished or disqualified.', captured_athletes, total_runners)
+            break
+
+        if new_df.empty:
+            logging.info("No new ranked entries or changes detected. Checking again in %s second.", recheck_time)
+            time.sleep(recheck_time)
+            continue
+
+    time.sleep(recheck_time)
+
     
     #update by dnf_ranks if they exist
     if not dnf_df.empty:
-        update_count_buffer = update_presentation(dnf_df, presentation, update_count, entries_per_slide)
-        update_count = update_count_buffer
-        logging.info("Adding DNF athletes: ", len(dnf_df))        
+        logging.info("Adding DNF athletes: %s", len(dnf_df))        
+        update_count = update_presentation(dnf_df, presentation, update_count, entries_per_slide, vertical_movement_per_entry)
 
-    assert presentation.SlideShowWindow, "no active slideshow"
-    presentation.SlideShowWindow.View.Next()
+    if update_count % entries_per_slide != 0:
+        last_slide_index = presentation.Slides.Count
+        slide = presentation.Slides(last_slide_index)
+        logging.info('Adding another slide after %s participants', update_count)
+        duplicated_slide = slide.Duplicate().Item(1)
+        slide = duplicated_slide
+        group_objects = collect_group_shapes(slide)
+        for group in group_objects[1:]:
+            group.Top -= vertical_movement_per_entry * (update_count % entries_per_slide)
+
+        logging.info('Going to the next slide, total slides %s', presentation.Slides.Count)
+        assert presentation.SlideShowWindow, 'no active slideshow'
+        presentation.SlideShowWindow.View.Next()
+        time.sleep(2)
+
+#    assert presentation.SlideShowWindow, "no active slideshow"
+#    presentation.SlideShowWindow.view.Next()
+
     time.sleep(5)
 
     if update_count > entries_per_slide:
@@ -93,13 +112,13 @@ def fetch_and_update_presentation(url : str, selected_heat : str, column_headers
         assert presentation.SlideShowWindow, "no active slideshow"
         presentation.SlideShowWindow.View.Next()
 
-    print("All athletes displayed")
+    logging.info("All athletes displayed")
 
 
 def main():
     logging.basicConfig(level=logging.INFO)
     
-    url = "https://ergebnisse.leichtathletik.de/Competitions/CurrentList/509866/9812#h8"
+    url = "https://ergebnisse.leichtathletik.de/Competitions/CurrentList/509874/9812"
     dataframes = scrape_dlv_data(url)
 
     pythoncom.CoInitialize()  # Initialize the COM library
@@ -115,7 +134,6 @@ def main():
     assert num_slides >= active_slide, f"you are trying to skip to slide {active_slide}, the highest page number is {num_slides}"
     slide = presentation.Slides(active_slide)
 
-    shape_count = scan_for_shapes(slide)
     group_objects = collect_group_shapes(slide)
 
     selected_heat = heat_selection(dataframes)
@@ -123,10 +141,8 @@ def main():
     content_headers = df.columns.tolist()
     logging.debug(f"Content Headers: {content_headers}")
 
-
     title_placeholder = slide.Shapes.Title
     title_placeholder.TextFrame.TextRange.Text = selected_heat
-
 
     group_header = group_objects[0]
 
