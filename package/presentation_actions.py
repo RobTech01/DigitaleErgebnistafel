@@ -1,7 +1,4 @@
 import logging
-import win32com.client
-import pythoncom
-import time
 
 def scan_for_shapes(slide, debug=False):
     placeholder_count = 0
@@ -71,11 +68,11 @@ def add_content_to_group_shapes(group_shape_list, content_per_column):
             # Additional logic can be added here to ignore rectangles or perform other checks
 
 
-def update_presentation(df, presentation, update_count, entries_per_slide, vertical_movement_per_entry):
+def update_presentation(df, presentation, update_count, entries_per_slide, vertical_movement_per_entry, event):
     participant_count = df.shape[0]  # Total number of new participants to ad
     entries_per_row = df.shape[1]  # Assuming this is used somewhere in populate_group
-    initial_slide_index = 2  # Start from this slide index
-    horizontal_movement_per_entry = -905  # Horizontal movement for each entry
+    initial_slide_index = 3 # Start from this slide index
+    horizontal_movement_per_entry = -944  # Horizontal movement for each entry
 
     slide = presentation.Slides(initial_slide_index)
     group_objects = collect_group_shapes(slide)
@@ -90,10 +87,11 @@ def update_presentation(df, presentation, update_count, entries_per_slide, verti
             for group in group_objects[1:]:
                 group.Top -= vertical_movement_per_entry * entries_per_slide
 
+            event.wait(1)
             logging.info('Going to the next slide, total slides %s', presentation.Slides.Count)
             assert presentation.SlideShowWindow, 'no active slideshow'
             presentation.SlideShowWindow.View.Next()
-            time.sleep(2)
+            event.wait(2*entries_per_slide)
 
         group_objects[1].Copy()
         pasted_group = slide.Shapes.Paste()
@@ -105,8 +103,23 @@ def update_presentation(df, presentation, update_count, entries_per_slide, verti
         pasted_group.Top = group_objects[1].Top + vertical_adjustment
         pasted_group.Left = group_objects[1].Left + horizontal_adjustment
 
-        time.sleep(.75)
+        event.wait(.75)
 
         update_count += 1
+
+    if update_count % entries_per_slide == 0 and update_count != 0 and update_count != entries_per_slide:
+        logging.info('Adding another slide after %s participants', update_count)
+        duplicated_slide = slide.Duplicate().Item(1)
+        slide = duplicated_slide
+        group_objects = collect_group_shapes(slide)
+        
+        for group in group_objects[1:]:
+            group.Top -= vertical_movement_per_entry * entries_per_slide
+        
+        event.wait(1)
+        logging.info('Going to the next slide, total slides %s', presentation.Slides.Count)
+        assert presentation.SlideShowWindow, 'no active slideshow'
+        presentation.SlideShowWindow.View.Next()
+        event.wait(2*entries_per_slide)       
 
     return update_count
