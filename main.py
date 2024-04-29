@@ -2,9 +2,9 @@ from package.presentation_actions import skip_to_page, collect_group_shapes, pop
 import win32com.client
 import pythoncom
 from package.data_scraping import scrape_dlv_data
-import time
 import logging
 import pandas as pd
+import threading
 
 logging.basicConfig(level=logging.INFO)
 
@@ -21,9 +21,13 @@ def heat_selection(df_data : pd.DataFrame) -> str:
     else:
         print("invalid input choose again")
         return heat_selection(df_data)
+    
+
+def truncate_text(text):
+    return text[:20] + '..' if isinstance(text, str) and len(text) > 25 else text
 
 
-def fetch_and_update_presentation(url : str, selected_heat : str, column_headers, presentation) -> None:
+def fetch_and_update_presentation(url : str, selected_heat : str, column_headers, presentation, event) -> None:
     entries_per_slide = 8  # Number of entries that fit in one slide
     vertical_movement_per_entry = 44  # Vertical movement for each entry
     recheck_time = 3   # in s
@@ -35,6 +39,7 @@ def fetch_and_update_presentation(url : str, selected_heat : str, column_headers
 
     while True:
         new_df = scrape_dlv_data(url)[selected_heat]
+        new_df = new_df.map(truncate_text)
 
         if new_df.empty:
             logging.info("No data retrieved. Checking again...")
@@ -56,7 +61,7 @@ def fetch_and_update_presentation(url : str, selected_heat : str, column_headers
         
         if not new_df.empty:
             logging.info("New ranked entries found, updating presentation.")
-            update_count = update_presentation(new_df, presentation, update_count, entries_per_slide, vertical_movement_per_entry)
+            update_count = update_presentation(new_df, presentation, update_count, entries_per_slide, vertical_movement_per_entry, event)
         
         old_df = pd.concat([old_df, new_df])
         captured_athletes = len(old_df) + len(dnf_df)
@@ -68,16 +73,16 @@ def fetch_and_update_presentation(url : str, selected_heat : str, column_headers
 
         if new_df.empty:
             logging.info("No new ranked entries or changes detected. Checking again in %s second.", recheck_time)
-            time.sleep(recheck_time)
+            event.wait(recheck_time)
             continue
 
-    time.sleep(recheck_time)
+    event.wait(recheck_time)
 
     
     #update by dnf_ranks if they exist
     if not dnf_df.empty:
         logging.info("Adding DNF athletes: %s", len(dnf_df))        
-        update_count = update_presentation(dnf_df, presentation, update_count, entries_per_slide, vertical_movement_per_entry)
+        update_count = update_presentation(dnf_df, presentation, update_count, entries_per_slide, vertical_movement_per_entry, event)
 
     if update_count % entries_per_slide != 0:
         last_slide_index = presentation.Slides.Count
@@ -92,12 +97,13 @@ def fetch_and_update_presentation(url : str, selected_heat : str, column_headers
         logging.info('Going to the next slide, total slides %s', presentation.Slides.Count)
         assert presentation.SlideShowWindow, 'no active slideshow'
         presentation.SlideShowWindow.View.Next()
-        time.sleep(2)
+        event.wait(recheck_time* (update_count % entries_per_slide))
 
 #    assert presentation.SlideShowWindow, "no active slideshow"
 #    presentation.SlideShowWindow.view.Next()
 
-    time.sleep(5)
+    else: 
+        event.wait(10)
 
     if update_count > entries_per_slide:
         index_last_slide = presentation.Slides.Count
@@ -114,12 +120,19 @@ def fetch_and_update_presentation(url : str, selected_heat : str, column_headers
 
     logging.info("All athletes displayed")
 
+    event.wait(15)
+
+    assert presentation.SlideShowWindow, "no active slideshow"
+    presentation.SlideShowWindow.View.First()
+
 
 def main():
     logging.basicConfig(level=logging.INFO)
     
-    url = "https://ergebnisse.leichtathletik.de/Competitions/CurrentList/509874/9812"
+    url = "https://ergebnisse.leichtathletik.de/Competitions/CurrentList/509869/9812"
     dataframes = scrape_dlv_data(url)
+
+    event = threading.Event()
 
     pythoncom.CoInitialize()  # Initialize the COM library
 
@@ -150,14 +163,27 @@ def main():
 
     populate_group(group_header, content_headers)
 
-    time.sleep(1)
+    event.wait(1)
 
     assert presentation.SlideShowWindow, "no active slideshow"
     presentation.SlideShowWindow.View.Next()
 
-    time.sleep(2)
+    event.wait(3.6)
 
-    fetch_and_update_presentation(url, selected_heat, content_headers, presentation)
+    active_slide = 3
+    slide = presentation.Slides(active_slide)
+    group_objects = collect_group_shapes(slide)
+
+    title_placeholder = slide.Shapes.Title
+    title_placeholder.TextFrame.TextRange.Text = selected_heat
+    group_header = group_objects[0]
+    populate_group(group_header, content_headers)
+
+    presentation.SlideShowWindow.View.Next()
+
+    event.wait(0.5)
+
+    fetch_and_update_presentation(url, selected_heat, content_headers, presentation, event)
     
 
 if __name__ == "__main__":
