@@ -23,8 +23,31 @@ def heat_selection(df_data : pd.DataFrame) -> str:
         return heat_selection(df_data)
     
 
+def url_selection() -> str:
+    print("Provide the url with the results: ")
+    user_url = input("> ").strip()
+
+    try:
+        test_df = scrape_dlv_data(user_url)
+    except AttributeError:
+        logging.error("There seems to be an issue with the url.. try again")
+        url_selection()
+    
+    print("url scrape successful")
+    print(test_df.keys())
+    print("do you want to use that data?")
+
+    user_input = input("(y/n)> ").split()
+    print(user_input)
+    if user_input[0] == 'y':
+        print("yes")
+        return user_url
+    
+    url_selection()
+
+
 def truncate_text(text):
-    return text[:20] + '..' if isinstance(text, str) and len(text) > 25 else text
+    return text[:20] + '..' if isinstance(text, str) and len(text) > 20 else text
 
 
 def fetch_and_update_presentation(url : str, selected_heat : str, column_headers, presentation, event) -> None:
@@ -84,20 +107,23 @@ def fetch_and_update_presentation(url : str, selected_heat : str, column_headers
         logging.info("Adding DNF athletes: %s", len(dnf_df))        
         update_count = update_presentation(dnf_df, presentation, update_count, entries_per_slide, vertical_movement_per_entry, event)
 
-    if update_count % entries_per_slide != 0:
-        last_slide_index = presentation.Slides.Count
-        slide = presentation.Slides(last_slide_index)
-        logging.info('Adding another slide after %s participants', update_count)
+    if update_count % entries_per_slide != 0 and update_count > entries_per_slide:
+        last_content_slide_index = presentation.Slides.Count-1
+        slide = presentation.Slides(last_content_slide_index)
+        logging.info(f"Current update_count: {update_count}, triggering slide duplication after adding DNF athletes.")
         duplicated_slide = slide.Duplicate().Item(1)
         slide = duplicated_slide
         group_objects = collect_group_shapes(slide)
         for group in group_objects[1:]:
             group.Top -= vertical_movement_per_entry * (update_count % entries_per_slide)
 
+        event.wait(1)
+        
         logging.info('Going to the next slide, total slides %s', presentation.Slides.Count)
         assert presentation.SlideShowWindow, 'no active slideshow'
         presentation.SlideShowWindow.View.Next()
-        event.wait(recheck_time* (update_count % entries_per_slide))
+        transition_in_seconds = 2
+        event.wait(recheck_time* (update_count % entries_per_slide)+ 2*transition_in_seconds)
 
 #    assert presentation.SlideShowWindow, "no active slideshow"
 #    presentation.SlideShowWindow.view.Next()
@@ -106,8 +132,8 @@ def fetch_and_update_presentation(url : str, selected_heat : str, column_headers
         event.wait(10)
 
     if update_count > entries_per_slide:
-        index_last_slide = presentation.Slides.Count
-        slide = presentation.Slides(index_last_slide)
+        last_content_slide_index = presentation.Slides.Count -1
+        slide = presentation.Slides(last_content_slide_index)
         duplicated_slide = slide.Duplicate().Item(1)
         slide = duplicated_slide
         group_objects = collect_group_shapes(slide)
@@ -118,7 +144,7 @@ def fetch_and_update_presentation(url : str, selected_heat : str, column_headers
         assert presentation.SlideShowWindow, "no active slideshow"
         presentation.SlideShowWindow.View.Next()
 
-    logging.info("All athletes displayed")
+    logging.info("All athletes displayed, remember to reset the Presentation")
 
     event.wait(15)
 
@@ -130,6 +156,9 @@ def main():
     logging.basicConfig(level=logging.INFO)
     
     url = "https://ergebnisse.leichtathletik.de/Competitions/CurrentList/509869/9812"
+
+    url = url_selection()
+
     dataframes = scrape_dlv_data(url)
 
     event = threading.Event()
