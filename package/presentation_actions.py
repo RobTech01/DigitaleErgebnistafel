@@ -73,6 +73,7 @@ def update_presentation(df, presentation, update_count, entries_per_slide, verti
     entries_per_row = df.shape[1]  # Assuming this is used somewhere in populate_group
     initial_slide_index = 3 # Start from this slide index
     horizontal_movement_per_entry = -944  # Horizontal movement for each entry
+    TRANSITION_IN_SECONDS = 3.5
 
     slide = presentation.Slides(initial_slide_index)
     group_objects = collect_group_shapes(slide)
@@ -94,7 +95,7 @@ def update_presentation(df, presentation, update_count, entries_per_slide, verti
             logging.info('Going to the next slide, total slides %s', presentation.Slides.Count)
             assert presentation.SlideShowWindow, 'no active slideshow'
             presentation.SlideShowWindow.View.Next()
-            event.wait(3*entries_per_slide)
+            event.wait(2*entries_per_slide + 2*TRANSITION_IN_SECONDS)
 
         group_objects[1].Copy()
         pasted_group = slide.Shapes.Paste()
@@ -123,6 +124,6 @@ def update_presentation(df, presentation, update_count, entries_per_slide, verti
         logging.info('Going to the next slide, total slides %s', presentation.Slides.Count)
         assert presentation.SlideShowWindow, 'no active slideshow'
         presentation.SlideShowWindow.View.Next()
-        event.wait(2*entries_per_slide)       
+        event.wait(2*entries_per_slide + 2*TRANSITION_IN_SECONDS)       
 
     return update_count
