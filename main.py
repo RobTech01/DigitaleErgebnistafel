@@ -216,6 +216,8 @@ def main():
     title_placeholder.TextFrame.TextRange.Text = selected_heat
     group_header = group_objects[0]
     populate_group(group_header, content_headers)
+    
+    event.wait(1)
 
     presentation.SlideShowWindow.View.Next()
 
