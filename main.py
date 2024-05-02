@@ -1,4 +1,4 @@
-from package.presentation_actions import skip_to_page, collect_group_shapes, populate_group, scan_for_shapes, add_content_to_group_shapes, update_presentation
+from package.presentation_actions import skip_to_page, collect_group_shapes, populate_group, scan_for_shapes, add_content_to_group_shapes, update_presentation, manage_slide_transition
 import win32com.client
 import pythoncom
 from package.data_scraping import scrape_dlv_data
@@ -46,14 +46,29 @@ def url_selection() -> str:
     url_selection()
 
 
-def truncate_text(text):
+def truncate_text_to_20_chars(text):
     return text[:20] + '..' if isinstance(text, str) and len(text) > 20 else text
+
+def fetch_new_data(url : str, selected_heat : str) -> pd.DataFrame:
+    new_df = scrape_dlv_data(url)[selected_heat]
+    new_df = new_df.map(truncate_text_to_20_chars)
+    return new_df
+
+def filter_data_updates(new_df: pd.DataFrame, old_df: pd.DataFrame) -> list[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    dnf_entries = new_df['Ergebnis'].isin(['n.a.', 'ab.', 'aufg.', 'n.a.', 'disq.', 'DNS', 'DNF', 'DQ'])
+    dnf_df = new_df[dnf_entries]
+    new_df = new_df[~dnf_entries]
+    new_df = new_df[new_df['Rang'].ne('')]  # Ensure rank is not empty
+    if not old_df.empty:
+        new_df = pd.concat([old_df, new_df]).drop_duplicates(keep=False)
+    return new_df, dnf_df, old_df
 
 
 def fetch_and_update_presentation(url : str, selected_heat : str, column_headers, presentation, event) -> None:
     entries_per_slide = 8  # Number of entries that fit in one slide
     vertical_movement_per_entry = 44  # Vertical movement for each entry
     recheck_time = 3   # in s
+    transition_in_seconds = 3.5
 
     old_df = pd.DataFrame(columns=column_headers)
     update_count = 0
@@ -61,27 +76,18 @@ def fetch_and_update_presentation(url : str, selected_heat : str, column_headers
     dropped_row_count = 1
 
     while True:
-        new_df = scrape_dlv_data(url)[selected_heat]
-        new_df = new_df.map(truncate_text)
+        new_df = fetch_new_data(url, selected_heat)
+        total_runners = len(new_df)
 
         if new_df.empty:
             logging.info("No data retrieved. Checking again...")
-            continue
-        
-        total_runners = len(new_df)
+            continue        
 
-        # Filter to identify only new or updated rows
         if not old_df.empty:
             new_df = pd.concat([old_df, new_df]).drop_duplicates(keep=False)
 
-        # Filter out DNF and similar entries
-        dnf_entries = new_df['Ergebnis'].isin(['n.a.', 'ab.', 'aufg.', 'n.a.', 'disq.', 'DNS', 'DNF', 'DQ'])
-        dnf_df = new_df[dnf_entries]
-        new_df = new_df[~dnf_entries]
+        new_df, dnf_df, old_df = filter_data_updates(new_df, old_df)
        
-        # Filter out entries without a completed rank (unfinished athletes)
-        new_df = new_df[new_df['Rang'].ne('')]
-        
         if not new_df.empty:
             logging.info("New ranked entries found, updating presentation.")
             update_count = update_presentation(new_df, presentation, update_count, entries_per_slide, vertical_movement_per_entry, event)
@@ -122,7 +128,6 @@ def fetch_and_update_presentation(url : str, selected_heat : str, column_headers
         logging.info('Going to the next slide, total slides %s', presentation.Slides.Count)
         assert presentation.SlideShowWindow, 'no active slideshow'
         presentation.SlideShowWindow.View.Next()
-        transition_in_seconds = 2
         event.wait(recheck_time* (update_count % entries_per_slide)+ 2*transition_in_seconds)
 
 #    assert presentation.SlideShowWindow, "no active slideshow"
