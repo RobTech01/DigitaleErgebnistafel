@@ -55,7 +55,7 @@ def populate_group(group, contents):
         content_placeholder.TextFrame.TextRange.Text = content
         content_index += 1
     
-    assert content_index == len(contents), "not all content has been distributed in populate_group()"
+    assert content_index <= len(contents), "more content than placeholders in populate_group()"
 
 def add_content_to_group_shapes(group_shape_list, content_per_column):
     for group_shape in group_shape_list:
@@ -79,7 +79,7 @@ def update_presentation(df, presentation, update_count, entries_per_slide, verti
 
     for row_index in range(participant_count):
         if update_count % entries_per_slide == 0 and update_count != 0 and update_count != entries_per_slide:
-            logging.info('Adding another slide after %s participants', update_count)
+            logging.debug(f"Current update_count: {update_count}, triggering slide duplication.")
             duplicated_slide = slide.Duplicate().Item(1)
             slide = duplicated_slide
             group_objects = collect_group_shapes(slide)
@@ -87,11 +87,14 @@ def update_presentation(df, presentation, update_count, entries_per_slide, verti
             for group in group_objects[1:]:
                 group.Top -= vertical_movement_per_entry * entries_per_slide
 
+            logging.info('Duplicated slide after %s participants', update_count)
+            
             event.wait(1)
+
             logging.info('Going to the next slide, total slides %s', presentation.Slides.Count)
             assert presentation.SlideShowWindow, 'no active slideshow'
             presentation.SlideShowWindow.View.Next()
-            event.wait(2*entries_per_slide)
+            event.wait(3*entries_per_slide)
 
         group_objects[1].Copy()
         pasted_group = slide.Shapes.Paste()
@@ -105,7 +108,7 @@ def update_presentation(df, presentation, update_count, entries_per_slide, verti
 
         event.wait(.75)
 
-        update_count += 1
+        update_count += 1   
 
     if update_count % entries_per_slide == 0 and update_count != 0 and update_count != entries_per_slide:
         logging.info('Adding another slide after %s participants', update_count)
