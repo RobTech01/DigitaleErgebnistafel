@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  track-results-display:
+    build: .
+    container_name: track-results-display
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./:/app
+    restart: unless-stopped
+    environment:
+      - DEBUG_MODE=False
+      - PORT=5000
