@@ -172,19 +172,6 @@ Modify transition effects for different visual impact:
 }
 ```
 
-## Deployment
-
-For production deployment, consider:
-
-1. **Using a WSGI server**:
-   ```bash
-   pip install gunicorn
-   gunicorn -w 4 -b 0.0.0.0:5000 app:app
-   ```
-
-2. **Setting up a reverse proxy** with Nginx or Apache
-
-3. **Disabling debug mode** by setting `DEBUG_MODE = False` in app.py
 
 ## Advanced Use Cases
 
