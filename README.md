@@ -26,7 +26,7 @@ A real-time web application for displaying athletic competition results, designe
 1. Clone this repository or download the files:
    ```bash
    git clone https://github.com/RobTech01/DigitaleErgebnistafel.git
-   cd track-results-display
+   cd DigitaleErgebnistafel
    ```
 
 2. Install required dependencies:
