@@ -1,0 +1,569 @@
+<!-- templates/display.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Athletics Results Display</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+        
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: rgba(0, 0, 0, 0); /* Fully transparent background */
+            font-family: 'Roboto', Arial, sans-serif;
+        }
+        
+        .container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        
+        .results-table {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            max-width: 1000px;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        }
+        
+        .header-row {
+            background-color: #222;
+            color: white;
+            padding: 15px 20px;
+            display: grid;
+            grid-template-columns: 0.8fr 2fr 1fr 1fr 1fr 0.8fr; /* Default grid, will be updated by JS */
+            align-items: center;
+        }
+        
+        .event-title {
+            font-size: 32px;
+            font-weight: bold;
+            grid-column: 1 / -1;
+            margin-bottom: 10px;
+        }
+        
+        .column-header {
+            font-weight: bold;
+            font-size: 16px;
+        }
+        
+        .sub-header {
+            font-size: 14px;
+            opacity: 0.8;
+            display: block;
+            margin-top: 2px;
+        }
+        
+        .page-container {
+            transition: opacity 0.8s ease;
+        }
+        
+        .page-container.hiding {
+            opacity: 0;
+        }
+        
+        .result-row {
+            background-color: #e6e6e6;
+            padding: 12px 20px;
+            display: grid;
+            grid-template-columns: 0.8fr 2fr 1fr 1fr 1fr 0.8fr; /* Default grid, will be updated by JS */
+            align-items: center;
+            margin-bottom: 2px;
+            border-radius: 8px;
+            transition: background-color 0.5s ease;
+        }
+        
+        .result-row:nth-child(odd) {
+            background-color: #e6e6e6;
+        }
+        
+        .result-row:nth-child(even) {
+            background-color: #f0f0f0;
+        }
+        
+        .result-row.highlight {
+            background-color: #fff7e0;
+            transition: background-color 0s;
+        }
+        
+        .result-row.fade-highlight {
+            transition: background-color 2s ease;
+        }
+        
+        .column-value {
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .primary-value {
+            font-size: 20px;
+            font-weight: bold;
+        }
+        
+        .secondary-value {
+            font-size: 16px;
+            margin-top: 4px;
+        }
+        
+        .result-time.updated {
+            color: #e63900;
+        }
+        
+        /* New entrant animation */
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .new-entry {
+            animation: slideIn 0.5s ease forwards;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="results-table">
+            <div class="header-row" id="headerRow">
+                <div class="event-title" id="eventTitle">Loading...</div>
+                <!-- Column headers will be dynamically generated -->
+            </div>
+            <div class="page-container" id="pageContainer">
+                <!-- Results will be dynamically generated here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const MAX_RESULTS_PER_PAGE = 8;
+        const UPDATE_INTERVAL = 3000; // ms
+        
+        // Known column pairs for display (primary value and optional secondary value)
+        const columnPairs = {
+            // Common first column patterns
+            "Rang": "Bib",
+            "Pl": "Bib",
+            "Pos": "Bib",
+            
+            // Common name patterns
+            "Name": "Verein",
+            "Athlete": "Club",
+            
+            // Common nationality patterns
+            "Nat": "JG",
+            "Nation": "JG",
+            "LV": "JG",
+            
+            // Result patterns
+            "Ergebnis": "",
+            "Result": "",
+            "Zeit": "",
+            "Time": "",
+            
+            // Other common patterns
+            "Klasse": "",
+            "Class": "",
+            "Cat": "",
+            "Info": ""
+        };
+        
+        // Default column widths (will be adjusted based on content)
+        const defaultColumnWidths = {
+            "rank": "0.8fr",     // Rank/position column
+            "name": "2fr",       // Name column (wider)
+            "country": "1fr",    // Country/region
+            "result": "1fr",     // Result/time
+            "category": "1fr",   // Category/class
+            "info": "0.8fr"      // Additional info
+        };
+        
+        // Column types for better handling
+        const columnTypes = {
+            "Rang": "rank",
+            "Pl": "rank",
+            "Pos": "rank",
+            "Bib": "bib",
+            "Name": "name",
+            "Athlete": "name", 
+            "Verein": "club",
+            "Club": "club",
+            "Nat": "country",
+            "Nation": "country",
+            "LV": "country",
+            "JG": "year",
+            "Ergebnis": "result",
+            "Result": "result", 
+            "Zeit": "result",
+            "Time": "result",
+            "Klasse": "category",
+            "Class": "category",
+            "Cat": "category",
+            "Info": "info"
+        };
+        
+        let currentData = null;
+        let previousData = null;
+        let currentPage = 0;
+        let totalPages = 0;
+        let updateTimer = null;
+        let previousDataHash = "";  // For detecting real changes
+        let columnStructure = [];   // Structure of the current columns
+        let gridTemplateColumns = ""; // CSS grid layout
+        
+        // Start polling for data
+        fetchData();
+        updateTimer = setInterval(fetchData, UPDATE_INTERVAL);
+        
+        /**
+         * Generate a simple hash from data for change detection
+         */
+        function generateDataHash(data) {
+            if (!data || !data.data) return "";
+            
+            let hash = "";
+            try {
+                // Create a hash based on relevant data
+                const relevantData = data.data.map(item => {
+                    const simpleItem = {};
+                    // Include all fields for a more accurate hash
+                    for (const key in item) {
+                        simpleItem[key] = item[key] || "";
+                    }
+                    return simpleItem;
+                });
+                hash = JSON.stringify(relevantData);
+            } catch (e) {
+                console.error("Error generating hash:", e);
+                hash = Date.now().toString(); // Fallback
+            }
+            return hash;
+        }
+        
+        /**
+         * Fetch current data from the API
+         */
+        function fetchData() {
+            fetch('/api/data')
+                .then(response => response.json())
+                .then(data => {
+                    // Get data hash for true change detection
+                    const dataHash = generateDataHash(data);
+                    const hasRealChange = dataHash !== previousDataHash;
+                    
+                    // Update hash for next comparison
+                    previousDataHash = dataHash;
+                    
+                    // Check if page change was requested
+                    if (data.currentPage !== undefined && data.currentPage !== currentPage) {
+                        // Changing page
+                        currentPage = data.currentPage;
+                        console.log(`Changing to page ${currentPage + 1} by control panel request`);
+                    }
+                    
+                    // Store previous data for comparison
+                    previousData = currentData;
+                    currentData = data;
+                    
+                    if (!previousData || hasRealChange || !columnStructure.length) {
+                        // Either first load, real change, or column structure needs update
+                        updateColumnStructure();
+                        renderResults(true);
+                    } else if (data.currentPage !== undefined && data.currentPage !== previousData.currentPage) {
+                        // Page has changed, force a re-render
+                        renderResults(true);
+                    } else {
+                        // Selective update
+                        renderResults(false);
+                    }
+                })
+                .catch(error => console.error('Error fetching data:', error));
+        }
+        
+        /**
+         * Update the column structure based on current data
+         */
+        function updateColumnStructure() {
+            if (!currentData || !currentData.columns || !currentData.data || currentData.data.length === 0) {
+                return;
+            }
+            
+            // Analyze columns in the data to create pairs and structure
+            columnStructure = [];
+            const columns = currentData.columns;
+            
+            // Go through columns and identify pairs
+            let i = 0;
+            while (i < columns.length) {
+                const column = columns[i];
+                let secondaryColumn = null;
+                
+                // Check if the column has a known pair
+                if (columnPairs[column] && columnPairs[column] !== "" && i + 1 < columns.length && columns[i + 1] === columnPairs[column]) {
+                    secondaryColumn = columns[i + 1];
+                    i += 2; // Skip the next column since we're pairing it
+                } else {
+                    i += 1; // Just move to the next column
+                }
+                
+                // Add to column structure
+                columnStructure.push({
+                    primary: column,
+                    secondary: secondaryColumn,
+                    type: columnTypes[column] || "text" // Default to text if type not recognized
+                });
+            }
+            
+            // Generate grid template columns CSS
+            gridTemplateColumns = columnStructure
+                .map(col => defaultColumnWidths[col.type] || "1fr")
+                .join(" ");
+            
+            // Update the grid template columns in the CSS
+            const headerRow = document.getElementById('headerRow');
+            headerRow.style.gridTemplateColumns = gridTemplateColumns;
+            
+            // Regenerate column headers
+            generateColumnHeaders();
+            
+            console.log("Updated column structure:", columnStructure);
+        }
+        
+        /**
+         * Generate the column headers based on the column structure
+         */
+        function generateColumnHeaders() {
+            const headerRow = document.getElementById('headerRow');
+            
+            // Clear existing headers (except event title)
+            const eventTitle = document.getElementById('eventTitle');
+            headerRow.innerHTML = '';
+            headerRow.appendChild(eventTitle);
+            
+            // Add each column header
+            columnStructure.forEach((column, index) => {
+                const headerDiv = document.createElement('div');
+                headerDiv.className = 'column-header';
+                headerDiv.innerHTML = column.primary;
+                
+                if (column.secondary) {
+                    headerDiv.innerHTML += `<span class="sub-header">${column.secondary}</span>`;
+                }
+                
+                headerRow.appendChild(headerDiv);
+            });
+        }
+        
+        /**
+         * Render the results to the display
+         */
+        function renderResults(forceRender) {
+            if (!currentData || !currentData.data || currentData.data.length === 0) {
+                document.getElementById('eventTitle').textContent = 'No data available';
+                document.getElementById('pageContainer').innerHTML = '';
+                return;
+            }
+            
+            // Update event title
+            document.getElementById('eventTitle').textContent = currentData.heat_name;
+            
+            // Calculate pagination
+            const results = currentData.data;
+            totalPages = Math.ceil(results.length / MAX_RESULTS_PER_PAGE);
+            
+            // Make sure currentPage is valid
+            if (currentPage >= totalPages) {
+                currentPage = 0;
+            }
+            
+            // Display current page
+            displayPage(currentPage, forceRender);
+        }
+        
+        /**
+         * Display a specific page of results
+         */
+        function displayPage(pageIndex, forceRender) {
+            if (!currentData || !currentData.data) return;
+            
+            const results = currentData.data;
+            const startIdx = pageIndex * MAX_RESULTS_PER_PAGE;
+            const endIdx = Math.min(startIdx + MAX_RESULTS_PER_PAGE, results.length);
+            
+            console.log(`Displaying page ${pageIndex + 1}/${totalPages} (results ${startIdx + 1}-${endIdx} of ${results.length})`);
+            
+            const pageContainer = document.getElementById('pageContainer');
+            
+            // For complete rerender or page change, fade out/in
+            if (forceRender || pageContainer.dataset.currentPage != pageIndex) {
+                pageContainer.classList.add('hiding');
+                
+                setTimeout(() => {
+                    // Complete rerender
+                    renderPageContent(pageContainer, results, startIdx, endIdx, true);
+                    pageContainer.classList.remove('hiding');
+                    pageContainer.dataset.currentPage = pageIndex;
+                }, 400);
+            } else {
+                // Selective update - no fade
+                renderPageContent(pageContainer, results, startIdx, endIdx, false);
+            }
+        }
+        
+        /**
+         * Render the content of a page
+         */
+        function renderPageContent(container, results, startIdx, endIdx, completeRender) {
+            // If complete render, clear container
+            if (completeRender) {
+                container.innerHTML = '';
+                
+                // Create all rows
+                for (let i = startIdx; i < endIdx; i++) {
+                    const result = results[i];
+                    const rowElement = createResultRow(result, i - startIdx);
+                    rowElement.classList.add('new-entry');
+                    container.appendChild(rowElement);
+                }
+            } else {
+                // Selective update - only update what changed
+                updateExistingRows(container, results, startIdx, endIdx);
+            }
+        }
+        
+        /**
+         * Create a result row element based on column structure
+         */
+        function createResultRow(result, index) {
+            const rowElement = document.createElement('div');
+            rowElement.className = 'result-row';
+            rowElement.id = `result-${index}`;
+            rowElement.style.gridTemplateColumns = gridTemplateColumns;
+            
+            // Store a unique identifier for athlete (preferably Bib number)
+            const identifier = result.Bib || result.bib || result.Rang || result.Pos || "";
+            rowElement.dataset.identifier = identifier;
+            
+            // Generate cells based on column structure
+            columnStructure.forEach((column, colIndex) => {
+                const cellDiv = document.createElement('div');
+                cellDiv.className = 'column-value';
+                
+                // Primary value
+                const primaryValue = result[column.primary] || "";
+                const primaryDiv = document.createElement('div');
+                primaryDiv.className = `primary-value ${column.type}`;
+                primaryDiv.id = `${column.type}-${index}-${colIndex}`;
+                primaryDiv.textContent = primaryValue;
+                cellDiv.appendChild(primaryDiv);
+                
+                // Secondary value (if exists)
+                if (column.secondary && result[column.secondary]) {
+                    const secondaryDiv = document.createElement('div');
+                    secondaryDiv.className = `secondary-value ${column.secondary.toLowerCase()}`;
+                    secondaryDiv.textContent = result[column.secondary] || "";
+                    cellDiv.appendChild(secondaryDiv);
+                }
+                
+                rowElement.appendChild(cellDiv);
+            });
+            
+            return rowElement;
+        }
+        
+        /**
+         * Update existing rows with changed data
+         */
+        function updateExistingRows(container, results, startIdx, endIdx) {
+            if (!previousData || !previousData.data) return;
+            
+            // Check if we need to update existing rows or create new ones
+            for (let i = 0; i < MAX_RESULTS_PER_PAGE; i++) {
+                const rowElement = document.getElementById(`result-${i}`);
+                const dataIndex = i + startIdx;
+                
+                // If row exists but no more data, remove it
+                if (rowElement && dataIndex >= results.length) {
+                    rowElement.remove();
+                    continue;
+                }
+                
+                // If no data for this position, skip
+                if (dataIndex >= results.length) continue;
+                
+                const newResult = results[dataIndex];
+                
+                // If row doesn't exist, create it
+                if (!rowElement) {
+                    const newRow = createResultRow(newResult, i);
+                    newRow.classList.add('new-entry');
+                    container.appendChild(newRow);
+                    continue;
+                }
+                
+                // Check if athlete has changed (by identifier)
+                const currentIdentifier = rowElement.dataset.identifier;
+                const newIdentifier = newResult.Bib || newResult.bib || newResult.Rang || newResult.Pos || "";
+                
+                if (currentIdentifier !== newIdentifier) {
+                    // Athlete changed, replace row
+                    const newRow = createResultRow(newResult, i);
+                    newRow.classList.add('highlight');
+                    rowElement.replaceWith(newRow);
+                    
+                    // Remove highlight after a delay
+                    setTimeout(() => {
+                        const replacedRow = document.getElementById(`result-${i}`);
+                        if (replacedRow) {
+                            replacedRow.classList.add('fade-highlight');
+                            replacedRow.classList.remove('highlight');
+                        }
+                    }, 1000);
+                    
+                    continue;
+                }
+                
+                // Update each cell value
+                columnStructure.forEach((column, colIndex) => {
+                    // Update primary value
+                    const primaryElement = document.getElementById(`${column.type}-${i}-${colIndex}`);
+                    if (primaryElement) {
+                        const newValue = newResult[column.primary] || "";
+                        const currentValue = primaryElement.textContent;
+                        
+                        if (currentValue !== newValue) {
+                            // Value has changed
+                            primaryElement.textContent = newValue;
+                            
+                            // Highlight changes based on column type
+                            if (column.type === 'result') {
+                                primaryElement.classList.add('updated');
+                                setTimeout(() => primaryElement.classList.remove('updated'), 2000);
+                            } else if (column.type === 'rank') {
+                                rowElement.classList.add('highlight');
+                                setTimeout(() => {
+                                    rowElement.classList.add('fade-highlight');
+                                    rowElement.classList.remove('highlight');
+                                }, 1000);
+                            }
+                        }
+                    }
+                    
+                    // Could also update secondary values if needed
+                });
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,715 @@
+<!-- templates/control.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Athletics Results Control Panel</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        h1 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        
+        .section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 6px;
+        }
+        
+        .section-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        
+        .input-group {
+            display: flex;
+        }
+        
+        .input-group input {
+            flex: 1;
+            margin-right: 10px;
+        }
+        
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+        
+        button.secondary {
+            background-color: #607D8B;
+        }
+        
+        button.warning {
+            background-color: #f44336;
+        }
+        
+        button:hover {
+            opacity: 0.9;
+        }
+        
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        
+        .heat-list {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+        
+        .heat-item {
+            padding: 10px 15px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+        }
+        
+        .heat-item:hover {
+            background-color: #f5f5f5;
+        }
+        
+        .heat-item.selected {
+            background-color: #e7f3ff;
+            font-weight: bold;
+        }
+        
+        .heat-item:last-child {
+            border-bottom: none;
+        }
+        
+        .status-bar {
+            margin-top: 20px;
+            padding: 12px;
+            border-radius: 4px;
+            background-color: #f0f0f0;
+            color: #333;
+            display: flex;
+            align-items: center;
+        }
+        
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: orange;
+            margin-right: 10px;
+        }
+        
+        .status-bar.running .status-indicator {
+            background-color: #4CAF50;
+        }
+        
+        .status-bar.error .status-indicator {
+            background-color: #f44336;
+        }
+        
+        .status-message {
+            flex: 1;
+        }
+        
+        .preview {
+            margin-top: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .preview-header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 10px 15px;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        
+        .preview-content {
+            padding: 15px;
+            background-color: #fafafa;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        table th, table td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        table th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        
+        .button-bar {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+        
+        .last-updated {
+            font-size: 12px;
+            color: #777;
+            text-align: right;
+            margin-top: 5px;
+        }
+        
+        .toggle-container {
+            display: flex;
+            align-items: center;
+        }
+
+        /* The switch - the box around the slider */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 46px;
+            height: 24px;
+            margin-right: 10px;
+        }
+
+        /* Hide default HTML checkbox */
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        /* The slider */
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+        }
+
+        input:checked + .slider {
+            background-color: #4CAF50;
+        }
+
+        input:focus + .slider {
+            box-shadow: 0 0 1px #4CAF50;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(22px);
+        }
+
+        /* Rounded sliders */
+        .slider.round {
+            border-radius: 24px;
+        }
+
+        .slider.round:before {
+            border-radius: 50%;
+        }
+
+        .toggle-label {
+            font-size: 14px;
+            color: #555;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .pagination-buttons {
+            display: flex;
+            align-items: center;
+            margin-top: 8px;
+        }
+
+        .page-button {
+            background-color: #607D8B;
+            padding: 8px 15px;
+            font-size: 14px;
+            margin: 0 10px;
+        }
+
+        #pageIndicator {
+            font-size: 14px;
+            color: #555;
+            flex: 1;
+            text-align: center;
+        }
+        
+        .pagination-control {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Track Results Display Control Panel</h1>
+        
+        <div class="section">
+            <div class="section-title">Event Source</div>
+            <div class="form-group">
+                <label for="urlInput">DLV Results URL:</label>
+                <div class="input-group">
+                    <input type="text" id="urlInput" value="https://ergebnisse.leichtathletik.de/Competitions/CurrentList/617972/12005" placeholder="https://ergebnisse.leichtathletik.de/...">
+                    <button id="loadButton">Load Heats</button>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="updateInterval">Update Interval (seconds):</label>
+                <input type="number" id="updateInterval" min="1" max="30" value="3">
+            </div>
+            
+            <div class="form-group pagination-control" id="paginationControl" style="display: none;">
+                <label>Page Navigation:</label>
+                <div class="pagination-buttons">
+                    <button id="prevPageButton" class="page-button" disabled>◀ Previous</button>
+                    <span id="pageIndicator">Page 1 of 1</span>
+                    <button id="nextPageButton" class="page-button" disabled>Next ▶</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">Available Heats</div>
+            <div class="heat-list" id="heatList">
+                <div class="heat-item">No heats loaded yet. Click "Load Heats" to fetch available events.</div>
+            </div>
+        </div>
+        
+        <div class="button-bar">
+            <div class="action-buttons">
+                <button id="startButton" disabled>Start Displaying</button>
+                <button id="stopButton" class="warning" disabled>Stop</button>
+                <button id="backToStartButton" class="secondary" disabled>Back to First Page</button>
+            </div>
+            <button id="openDisplayButton" class="secondary">Open Display Window</button>
+        </div>
+        
+        <div class="status-bar" id="statusBar">
+            <div class="status-indicator"></div>
+            <div class="status-message" id="statusMessage">Ready to start</div>
+        </div>
+        
+        <div class="preview">
+            <div class="preview-header">Data Preview</div>
+            <div class="preview-content">
+                <table id="previewTable">
+                    <thead>
+                        <tr id="previewHeader">
+                            <th>Position</th>
+                            <th>Name</th>
+                            <th>Result</th>
+                        </tr>
+                    </thead>
+                    <tbody id="previewBody">
+                        <tr>
+                            <td colspan="3">No data to preview</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div class="last-updated" id="lastUpdated"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // DOM Elements
+        const urlInput = document.getElementById('urlInput');
+        const loadButton = document.getElementById('loadButton');
+        const updateInterval = document.getElementById('updateInterval');
+        const heatList = document.getElementById('heatList');
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const backToStartButton = document.getElementById('backToStartButton');
+        const openDisplayButton = document.getElementById('openDisplayButton');
+        const statusBar = document.getElementById('statusBar');
+        const statusMessage = document.getElementById('statusMessage');
+        const previewHeader = document.getElementById('previewHeader');
+        const previewBody = document.getElementById('previewBody');
+        const lastUpdated = document.getElementById('lastUpdated');
+        const paginationControl = document.getElementById('paginationControl');
+        const prevPageButton = document.getElementById('prevPageButton');
+        const nextPageButton = document.getElementById('nextPageButton');
+        const pageIndicator = document.getElementById('pageIndicator');
+        
+        // State
+        let selectedHeat = null;
+        let displayWindow = null;
+        let dataUpdateTimer = null;
+        let isMonitoring = false;
+        let currentPage = 0;
+        let totalPages = 0;
+        
+        // Event Listeners
+        loadButton.addEventListener('click', loadHeats);
+        startButton.addEventListener('click', startDisplaying);
+        stopButton.addEventListener('click', stopDisplaying);
+        openDisplayButton.addEventListener('click', openDisplayWindow);
+        backToStartButton.addEventListener('click', resetToFirstPage);
+        prevPageButton.addEventListener('click', goToPreviousPage);
+        nextPageButton.addEventListener('click', goToNextPage);
+        
+        // Functions
+        function loadHeats() {
+            stopDisplaying()
+            const url = urlInput.value.trim();
+            
+            if (!url) {
+                alert('Please enter a valid URL');
+                return;
+            }
+            
+            updateStatus('Loading heats...', 'loading');
+            
+            // Fetch heats from the backend
+            fetch(`/api/heats?url=${encodeURIComponent(url)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+                    
+                    const heats = data.heats || [];
+                    populateHeatsList(heats);
+                    updateStatus(`Loaded ${heats.length} heats`, 'ready');
+                })
+                .catch(error => {
+                    updateStatus(`Error loading heats: ${error.message}`, 'error');
+                });
+        }
+        
+        function populateHeatsList(heats) {
+            heatList.innerHTML = '';
+            
+            if (heats.length === 0) {
+                const item = document.createElement('div');
+                item.className = 'heat-item';
+                item.textContent = 'No heats found';
+                heatList.appendChild(item);
+                return;
+            }
+            
+            heats.forEach(heat => {
+                const item = document.createElement('div');
+                item.className = 'heat-item';
+                item.textContent = heat;
+                item.addEventListener('click', () => selectHeat(heat, item));
+                heatList.appendChild(item);
+            });
+        }
+        
+        function selectHeat(heat, element) {
+            // Clear previous selection
+            document.querySelectorAll('.heat-item.selected').forEach(el => {
+                el.classList.remove('selected');
+            });
+            
+            // Set new selection
+            element.classList.add('selected');
+            selectedHeat = heat;
+            
+            // Enable start button
+            startButton.disabled = false;
+            
+            updateStatus(`Selected: ${heat}`, 'ready');
+            fetchPreviewData();
+        }
+        
+        function startDisplaying() {
+            if (!selectedHeat) {
+                alert('Please select a heat first');
+                return;
+            }
+            
+            const url = urlInput.value.trim();
+            const interval = parseInt(updateInterval.value) || 3;
+            
+            // Start monitoring on the backend
+            fetch('/api/start', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    url: url,
+                    heat: selectedHeat,
+                    interval: interval,
+                    currentPage: 0  // Reset to first page when starting
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                // Update UI
+                startButton.disabled = true;
+                stopButton.disabled = false;
+                backToStartButton.disabled = false;
+                isMonitoring = true;
+                currentPage = 0;  // Reset current page
+                updatePageIndicator();
+                updateStatus(`Displaying: ${selectedHeat}`, 'running');
+                
+                // Start preview updates
+                if (dataUpdateTimer) clearInterval(dataUpdateTimer);
+                dataUpdateTimer = setInterval(fetchPreviewData, interval * 1000);
+                fetchPreviewData();
+                
+                // Open display window if not already open
+                if (!displayWindow || displayWindow.closed) {
+                    openDisplayWindow();
+                }
+            })
+            .catch(error => {
+                updateStatus(`Error starting display: ${error.message}`, 'error');
+            });
+        }
+        
+        function stopDisplaying() {
+            // Stop monitoring on the backend
+            fetch('/api/stop', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Update UI
+                startButton.disabled = !selectedHeat;
+                stopButton.disabled = true;
+                backToStartButton.disabled = true;
+                isMonitoring = false;
+                updateStatus('Display stopped', 'ready');
+                
+                // Stop preview updates
+                if (dataUpdateTimer) {
+                    clearInterval(dataUpdateTimer);
+                    dataUpdateTimer = null;
+                }
+                
+                // Hide pagination controls
+                paginationControl.style.display = 'none';
+            })
+            .catch(error => {
+                updateStatus(`Error stopping display: ${error.message}`, 'error');
+            });
+        }
+        
+        function openDisplayWindow() {
+            // Open display in new window
+            if (displayWindow && !displayWindow.closed) {
+                displayWindow.focus();
+            } else {
+                displayWindow = window.open('/display', 'ResultsDisplay', 
+                                          'width=1280,height=720,menubar=no,toolbar=no');
+            }
+        }
+        
+        function goToPreviousPage() {
+            if (currentPage > 0) {
+                currentPage--;
+                updatePageIndicator();
+                sendPageUpdate();
+            }
+        }
+
+        function goToNextPage() {
+            if (currentPage < totalPages - 1) {
+                currentPage++;
+                updatePageIndicator();
+                sendPageUpdate();
+            }
+        }
+
+        function updatePageIndicator() {
+            pageIndicator.textContent = `Page ${currentPage + 1} of ${totalPages}`;
+            
+            // Update button states
+            prevPageButton.disabled = currentPage === 0;
+            nextPageButton.disabled = currentPage >= totalPages - 1;
+        }
+
+        function sendPageUpdate() {
+            fetch('/api/change-page', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    page: currentPage
+                })
+            }).catch(error => {
+                console.error('Error changing page:', error);
+            });
+        }
+
+        function resetToFirstPage() {
+            currentPage = 0;
+            updatePageIndicator();
+            
+            fetch('/api/change-page', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    page: 0
+                })
+            }).then(response => {
+                updateStatus('Returned to first page', 'running');
+            }).catch(error => {
+                console.error('Error resetting to first page:', error);
+            });
+        }
+        
+        function updateStatus(message, status) {
+            statusMessage.textContent = message;
+            
+            if (status === 'running') {
+                statusBar.className = 'status-bar running';
+            } else if (status === 'error') {
+                statusBar.className = 'status-bar error';
+            } else {
+                statusBar.className = 'status-bar';
+            }
+        }
+        
+        function fetchPreviewData() {
+            fetch('/api/data')
+                .then(response => response.json())
+                .then(data => {
+                    updatePreview(data);
+                    
+                    // Update pagination if data available
+                    if (data && data.data && data.data.length > 0) {
+                        // Calculate total pages
+                        totalPages = Math.ceil(data.data.length / 8); // 8 results per page
+                        
+                        // Update current page if needed
+                        if (data.currentPage !== undefined) {
+                            currentPage = data.currentPage;
+                        }
+                        
+                        // Update page indicator
+                        updatePageIndicator();
+                        
+                        // Show pagination controls
+                        paginationControl.style.display = 'block';
+                    } else {
+                        // Hide pagination controls when no data
+                        paginationControl.style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching preview data:', error);
+                });
+        }
+        
+        function updatePreview(data) {
+            if (!data || !data.data || data.data.length === 0) {
+                previewHeader.innerHTML = '<th>No data available</th>';
+                previewBody.innerHTML = '<tr><td colspan="3">No data to preview</td></tr>';
+                lastUpdated.textContent = '';
+                return;
+            }
+            
+            // Update timestamp
+            if (data.timestamp) {
+                lastUpdated.textContent = `Last updated: ${data.timestamp}`;
+            }
+            
+            // Update header
+            previewHeader.innerHTML = '';
+            const columns = data.columns.slice(0, 5); // First 5 columns only
+            
+            columns.forEach(column => {
+                const th = document.createElement('th');
+                th.textContent = column;
+                previewHeader.appendChild(th);
+            });
+            
+            // Update body
+            previewBody.innerHTML = '';
+            
+            data.data.forEach(row => {
+                const tr = document.createElement('tr');
+                
+                columns.forEach(column => {
+                    const td = document.createElement('td');
+                    td.textContent = row[column] || '';
+                    tr.appendChild(td);
+                });
+                
+                previewBody.appendChild(tr);
+            });
+        }
+    </script>
+</body>
+</html>
