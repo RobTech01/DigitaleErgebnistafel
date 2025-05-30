@@ -1,4 +1,3 @@
-<!-- templates/display.html -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -20,6 +19,7 @@
             position: relative;
         }
         
+        /* Main visible container */
         .results-table {
             position: absolute;
             top: 50%;
@@ -60,14 +60,6 @@
             margin-top: 2px;
         }
         
-        .page-container {
-            transition: opacity 0.8s ease;
-        }
-        
-        .page-container.hiding {
-            opacity: 0;
-        }
-        
         .result-row {
             background-color: #e6e6e6;
             padding: 12px 20px;
@@ -76,7 +68,6 @@
             align-items: center;
             margin-bottom: 2px;
             border-radius: 8px;
-            transition: background-color 0.5s ease;
         }
         
         .result-row:nth-child(odd) {
@@ -85,15 +76,6 @@
         
         .result-row:nth-child(even) {
             background-color: #f0f0f0;
-        }
-        
-        .result-row.highlight {
-            background-color: #fff7e0;
-            transition: background-color 0s;
-        }
-        
-        .result-row.fade-highlight {
-            transition: background-color 2s ease;
         }
         
         .column-value {
@@ -111,30 +93,25 @@
             margin-top: 4px;
         }
         
-        .result-time.updated {
-            color: #e63900;
-        }
-        
-        /* New entrant animation */
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        
-        .new-entry {
-            animation: slideIn 0.5s ease forwards;
+        /* Overlay for freeze-frame effect - only used for data updates, not page changes */
+        .update-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0);
+            z-index: 1000;
+            display: none;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="results-table">
+    <!-- Overlay div for freeze-frame effect -->
+    <div class="update-overlay" id="updateOverlay"></div>
+    
+    <div class="container" id="mainContainer">
+        <div class="results-table" id="resultsTable">
             <div class="header-row" id="headerRow">
                 <div class="event-title" id="eventTitle">Loading...</div>
                 <!-- Column headers will be dynamically generated -->
@@ -149,6 +126,15 @@
         // Configuration
         const MAX_RESULTS_PER_PAGE = 8;
         const UPDATE_INTERVAL = 3000; // ms
+        const ERROR_RECOVER_ATTEMPTS = 3; // How many times to try recovering from errors
+        
+        // State variables for handling scraper failures
+        let consecutiveEmptyResponses = 0;
+        let lastKnownGoodData = null; // Store the last successful data response
+        
+        // Variables to track page changes
+        let previousPage = 0;
+        let isPageChange = false;
         
         // Known column pairs for display (primary value and optional secondary value)
         const columnPairs = {
@@ -221,6 +207,31 @@
         let previousDataHash = "";  // For detecting real changes
         let columnStructure = [];   // Structure of the current columns
         let gridTemplateColumns = ""; // CSS grid layout
+        let isUpdating = false;     // Flag to prevent simultaneous updates
+        
+        // DOM elements
+        const mainContainer = document.getElementById('mainContainer');
+        const resultsTable = document.getElementById('resultsTable');
+        const headerRow = document.getElementById('headerRow');
+        const eventTitle = document.getElementById('eventTitle');
+        const pageContainer = document.getElementById('pageContainer');
+        const updateOverlay = document.getElementById('updateOverlay');
+        
+        // Function to capture the current screen state for freeze-frame effect
+        function captureScreen() {
+            // Display the overlay to freeze the screen
+            updateOverlay.style.display = 'block';
+            
+            // Return a promise that resolves after a short delay
+            return new Promise(resolve => {
+                setTimeout(() => resolve(), 10);
+            });
+        }
+        
+        // Function to release the frozen screen
+        function releaseScreen() {
+            updateOverlay.style.display = 'none';
+        }
         
         // Start polling for data
         fetchData();
@@ -235,14 +246,20 @@
             let hash = "";
             try {
                 // Create a hash based on relevant data
-                const relevantData = data.data.map(item => {
-                    const simpleItem = {};
-                    // Include all fields for a more accurate hash
-                    for (const key in item) {
-                        simpleItem[key] = item[key] || "";
-                    }
-                    return simpleItem;
-                });
+                const relevantData = {
+                    heatName: data.heat_name || "",
+                    // Only include essential data from each result for the hash
+                    results: data.data.map(item => {
+                        const essentialData = {};
+                        // Include the most important fields for change detection
+                        const keysToCheck = ['Rang', 'Pl', 'Pos', 'Name', 'Ergebnis', 'Result', 'Zeit', 'Time'];
+                        keysToCheck.forEach(key => {
+                            if (item[key]) essentialData[key] = item[key];
+                        });
+                        return essentialData;
+                    }),
+                    currentPage: data.currentPage
+                };
                 hash = JSON.stringify(relevantData);
             } catch (e) {
                 console.error("Error generating hash:", e);
@@ -255,9 +272,53 @@
          * Fetch current data from the API
          */
         function fetchData() {
+            // Skip if currently updating
+            if (isUpdating) return;
+            
+            // Store the current heat name and page before fetching new data
+            const currentHeatName = currentData?.heat_name || '';
+            previousPage = currentPage;
+            
             fetch('/api/data')
                 .then(response => response.json())
                 .then(data => {
+                    // Handle empty data or scraper issues
+                    if (!data || !data.data || data.data.length === 0) {
+                        console.log("Received empty data or scraper error");
+                        consecutiveEmptyResponses++;
+                        
+                        // If we previously had good data, use it instead
+                        if (lastKnownGoodData && consecutiveEmptyResponses <= ERROR_RECOVER_ATTEMPTS) {
+                            console.log(`Using last known good data (attempt ${consecutiveEmptyResponses}/${ERROR_RECOVER_ATTEMPTS})`);
+                            
+                            // If the heat name changed but data is empty, this is likely a scraper issue
+                            if (data.heat_name && data.heat_name !== currentHeatName) {
+                                console.log("Heat name changed but data is empty - using previous data");
+                                
+                                // Create a merged object with new heat name but old good data
+                                const mergedData = {
+                                    ...lastKnownGoodData,
+                                    heat_name: data.heat_name
+                                };
+                                
+                                // Update current data with our merged version
+                                previousData = currentData;
+                                currentData = mergedData;
+                                
+                                // Force an update to show the new heat name with old data
+                                updateColumnStructure();
+                                renderResultsWithFreezeFrame();
+                                return;
+                            }
+                        }
+                        
+                        return; // Don't update when no data is available
+                    }
+                    
+                    // Reset counter since we got good data
+                    consecutiveEmptyResponses = 0;
+                    lastKnownGoodData = data;
+                    
                     // Get data hash for true change detection
                     const dataHash = generateDataHash(data);
                     const hasRealChange = dataHash !== previousDataHash;
@@ -266,29 +327,36 @@
                     previousDataHash = dataHash;
                     
                     // Check if page change was requested
-                    if (data.currentPage !== undefined && data.currentPage !== currentPage) {
-                        // Changing page
+                    if (data.currentPage !== undefined && data.currentPage !== previousPage) {
+                        // This is a page change
+                        isPageChange = true;
                         currentPage = data.currentPage;
                         console.log(`Changing to page ${currentPage + 1} by control panel request`);
+                    } else {
+                        isPageChange = false;
                     }
                     
                     // Store previous data for comparison
                     previousData = currentData;
                     currentData = data;
                     
-                    if (!previousData || hasRealChange || !columnStructure.length) {
-                        // Either first load, real change, or column structure needs update
+                    // Only render if we have a real change
+                    if (hasRealChange) {
                         updateColumnStructure();
-                        renderResults(true);
-                    } else if (data.currentPage !== undefined && data.currentPage !== previousData.currentPage) {
-                        // Page has changed, force a re-render
-                        renderResults(true);
-                    } else {
-                        // Selective update
-                        renderResults(false);
+                        
+                        // Use different rendering method for page changes vs. data updates
+                        if (isPageChange) {
+                            renderPageChangeWithoutFreezeFrame();
+                        } else {
+                            renderResultsWithFreezeFrame();
+                        }
                     }
                 })
-                .catch(error => console.error('Error fetching data:', error));
+                .catch(error => {
+                    console.error('Error fetching data:', error);
+                    consecutiveEmptyResponses++;
+                    // On error, maintain current view - don't clear the display
+                });
         }
         
         /**
@@ -331,7 +399,6 @@
                 .join(" ");
             
             // Update the grid template columns in the CSS
-            const headerRow = document.getElementById('headerRow');
             headerRow.style.gridTemplateColumns = gridTemplateColumns;
             
             // Regenerate column headers
@@ -344,21 +411,24 @@
          * Generate the column headers based on the column structure
          */
         function generateColumnHeaders() {
-            const headerRow = document.getElementById('headerRow');
-            
             // Clear existing headers (except event title)
-            const eventTitle = document.getElementById('eventTitle');
-            headerRow.innerHTML = '';
-            headerRow.appendChild(eventTitle);
+            while (headerRow.children.length > 1) {
+                headerRow.removeChild(headerRow.lastChild);
+            }
             
             // Add each column header
             columnStructure.forEach((column, index) => {
                 const headerDiv = document.createElement('div');
                 headerDiv.className = 'column-header';
-                headerDiv.innerHTML = column.primary;
+                
+                // Remove 'läuft' from primary header text for display only
+                const primaryText = column.primary.replace('läuft', '');
+                headerDiv.innerHTML = primaryText;
                 
                 if (column.secondary) {
-                    headerDiv.innerHTML += `<span class="sub-header">${column.secondary}</span>`;
+                    // Remove 'läuft' from secondary header text for display only
+                    const secondaryText = column.secondary.replace('läuft', '');
+                    headerDiv.innerHTML += `<span class="sub-header">${secondaryText}</span>`;
                 }
                 
                 headerRow.appendChild(headerDiv);
@@ -366,17 +436,100 @@
         }
         
         /**
-         * Render the results to the display
+         * Render page changes without using the freeze-frame effect
+         * This provides a smoother experience for page navigation
          */
-        function renderResults(forceRender) {
+        function renderPageChangeWithoutFreezeFrame() {
+            if (isUpdating) return;
+            isUpdating = true;
+            
+            try {
+                // Check if we have valid data
+                if (!currentData || !currentData.data || currentData.data.length === 0) {
+                    console.log("No data rows to render for page change");
+                    isUpdating = false;
+                    return;
+                }
+                
+                console.log("Rendering page change without freeze-frame");
+                
+                // Calculate pagination
+                const results = currentData.data;
+                totalPages = Math.ceil(results.length / MAX_RESULTS_PER_PAGE);
+                
+                // Make sure currentPage is valid
+                if (currentPage >= totalPages) {
+                    currentPage = 0;
+                }
+                
+                // Clear existing rows in the visible container
+                pageContainer.innerHTML = '';
+                
+                // Add new rows directly to the visible container
+                const startIdx = currentPage * MAX_RESULTS_PER_PAGE;
+                const endIdx = Math.min(startIdx + MAX_RESULTS_PER_PAGE, results.length);
+                
+                for (let i = startIdx; i < endIdx; i++) {
+                    const result = results[i];
+                    const rowElement = createResultRow(result, i - startIdx);
+                    pageContainer.appendChild(rowElement);
+                }
+                
+                console.log("Page change completed smoothly");
+            } catch (error) {
+                console.error("Error updating page:", error);
+            } finally {
+                isUpdating = false;
+            }
+        }
+        
+        /**
+         * Render the results to the display using freeze-frame effect
+         * Only used for data changes, not page changes
+         */
+        function renderResultsWithFreezeFrame() {
+            if (isUpdating) return; // Prevent multiple simultaneous updates
+            isUpdating = true;
+            
+            // Check if we have valid data with actual rows before doing anything
             if (!currentData || !currentData.data || currentData.data.length === 0) {
-                document.getElementById('eventTitle').textContent = 'No data available';
-                document.getElementById('pageContainer').innerHTML = '';
-                return;
+                console.log("No data rows to render, keeping current display");
+                isUpdating = false;
+                return; // Maintain current display
             }
             
-            // Update event title
-            document.getElementById('eventTitle').textContent = currentData.heat_name;
+            try {
+                // Freeze-frame effect (capture current screen state)
+                captureScreen().then(() => {
+                    // Step 1: Update the content
+                    updateResultsContent();
+                    
+                    // Step 2: After a short delay, release the screen
+                    setTimeout(() => {
+                        releaseScreen();
+                        isUpdating = false;
+                    }, 200); // Short delay for transition
+                });
+                
+                console.log("Display updated with new content using freeze-frame");
+            } catch (error) {
+                console.error("Error updating display:", error);
+                releaseScreen(); // Make sure to release in case of error
+                isUpdating = false;
+            }
+        }
+        
+        /**
+         * Update the results content
+         * Used by both freeze-frame updates and direct page changes
+         */
+        function updateResultsContent() {
+            // Update heat name
+            const heatName = currentData.heat_name || '';
+            const isLiveHeat = heatName.includes('läuft');
+            const cleanedHeatName = heatName.replace(' läuft', '').trim();
+            eventTitle.textContent = cleanedHeatName;
+            eventTitle.dataset.isLive = isLiveHeat;
             
             // Calculate pagination
             const results = currentData.data;
@@ -387,58 +540,17 @@
                 currentPage = 0;
             }
             
-            // Display current page
-            displayPage(currentPage, forceRender);
-        }
-        
-        /**
-         * Display a specific page of results
-         */
-        function displayPage(pageIndex, forceRender) {
-            if (!currentData || !currentData.data) return;
+            // Clear existing rows
+            pageContainer.innerHTML = '';
             
-            const results = currentData.data;
-            const startIdx = pageIndex * MAX_RESULTS_PER_PAGE;
+            // Add new rows
+            const startIdx = currentPage * MAX_RESULTS_PER_PAGE;
             const endIdx = Math.min(startIdx + MAX_RESULTS_PER_PAGE, results.length);
             
-            console.log(`Displaying page ${pageIndex + 1}/${totalPages} (results ${startIdx + 1}-${endIdx} of ${results.length})`);
-            
-            const pageContainer = document.getElementById('pageContainer');
-            
-            // For complete rerender or page change, fade out/in
-            if (forceRender || pageContainer.dataset.currentPage != pageIndex) {
-                pageContainer.classList.add('hiding');
-                
-                setTimeout(() => {
-                    // Complete rerender
-                    renderPageContent(pageContainer, results, startIdx, endIdx, true);
-                    pageContainer.classList.remove('hiding');
-                    pageContainer.dataset.currentPage = pageIndex;
-                }, 400);
-            } else {
-                // Selective update - no fade
-                renderPageContent(pageContainer, results, startIdx, endIdx, false);
-            }
-        }
-        
-        /**
-         * Render the content of a page
-         */
-        function renderPageContent(container, results, startIdx, endIdx, completeRender) {
-            // If complete render, clear container
-            if (completeRender) {
-                container.innerHTML = '';
-                
-                // Create all rows
-                for (let i = startIdx; i < endIdx; i++) {
-                    const result = results[i];
-                    const rowElement = createResultRow(result, i - startIdx);
-                    rowElement.classList.add('new-entry');
-                    container.appendChild(rowElement);
-                }
-            } else {
-                // Selective update - only update what changed
-                updateExistingRows(container, results, startIdx, endIdx);
+            for (let i = startIdx; i < endIdx; i++) {
+                const result = results[i];
+                const rowElement = createResultRow(result, i - startIdx);
+                pageContainer.appendChild(rowElement);
             }
         }
         
@@ -460,8 +572,8 @@
                 const cellDiv = document.createElement('div');
                 cellDiv.className = 'column-value';
                 
-                // Primary value
-                const primaryValue = result[column.primary] || "";
+                // Primary value - remove 'läuft' for display
+                const primaryValue = (result[column.primary] || "").replace('läuft', '');
                 const primaryDiv = document.createElement('div');
                 primaryDiv.className = `primary-value ${column.type}`;
                 primaryDiv.id = `${column.type}-${index}-${colIndex}`;
@@ -470,9 +582,10 @@
                 
                 // Secondary value (if exists)
                 if (column.secondary && result[column.secondary]) {
+                    // Remove 'läuft' from secondary value for display
                     const secondaryDiv = document.createElement('div');
                     secondaryDiv.className = `secondary-value ${column.secondary.toLowerCase()}`;
-                    secondaryDiv.textContent = result[column.secondary] || "";
+                    secondaryDiv.textContent = (result[column.secondary] || "").replace('läuft', '');
                     cellDiv.appendChild(secondaryDiv);
                 }
                 
@@ -480,89 +593,6 @@
             });
             
             return rowElement;
-        }
-        
-        /**
-         * Update existing rows with changed data
-         */
-        function updateExistingRows(container, results, startIdx, endIdx) {
-            if (!previousData || !previousData.data) return;
-            
-            // Check if we need to update existing rows or create new ones
-            for (let i = 0; i < MAX_RESULTS_PER_PAGE; i++) {
-                const rowElement = document.getElementById(`result-${i}`);
-                const dataIndex = i + startIdx;
-                
-                // If row exists but no more data, remove it
-                if (rowElement && dataIndex >= results.length) {
-                    rowElement.remove();
-                    continue;
-                }
-                
-                // If no data for this position, skip
-                if (dataIndex >= results.length) continue;
-                
-                const newResult = results[dataIndex];
-                
-                // If row doesn't exist, create it
-                if (!rowElement) {
-                    const newRow = createResultRow(newResult, i);
-                    newRow.classList.add('new-entry');
-                    container.appendChild(newRow);
-                    continue;
-                }
-                
-                // Check if athlete has changed (by identifier)
-                const currentIdentifier = rowElement.dataset.identifier;
-                const newIdentifier = newResult.Bib || newResult.bib || newResult.Rang || newResult.Pos || "";
-                
-                if (currentIdentifier !== newIdentifier) {
-                    // Athlete changed, replace row
-                    const newRow = createResultRow(newResult, i);
-                    newRow.classList.add('highlight');
-                    rowElement.replaceWith(newRow);
-                    
-                    // Remove highlight after a delay
-                    setTimeout(() => {
-                        const replacedRow = document.getElementById(`result-${i}`);
-                        if (replacedRow) {
-                            replacedRow.classList.add('fade-highlight');
-                            replacedRow.classList.remove('highlight');
-                        }
-                    }, 1000);
-                    
-                    continue;
-                }
-                
-                // Update each cell value
-                columnStructure.forEach((column, colIndex) => {
-                    // Update primary value
-                    const primaryElement = document.getElementById(`${column.type}-${i}-${colIndex}`);
-                    if (primaryElement) {
-                        const newValue = newResult[column.primary] || "";
-                        const currentValue = primaryElement.textContent;
-                        
-                        if (currentValue !== newValue) {
-                            // Value has changed
-                            primaryElement.textContent = newValue;
-                            
-                            // Highlight changes based on column type
-                            if (column.type === 'result') {
-                                primaryElement.classList.add('updated');
-                                setTimeout(() => primaryElement.classList.remove('updated'), 2000);
-                            } else if (column.type === 'rank') {
-                                rowElement.classList.add('highlight');
-                                setTimeout(() => {
-                                    rowElement.classList.add('fade-highlight');
-                                    rowElement.classList.remove('highlight');
-                                }, 1000);
-                            }
-                        }
-                    }
-                    
-                    // Could also update secondary values if needed
-                });
-            }
         }
     </script>
 </body>
